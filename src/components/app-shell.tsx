@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { logoutAction } from "@/app/actions/auth";
-import type { Session } from "@/lib/session";
+import type { Session } from "@/lib/session-types";
 
 interface NavItem {
   href: string;

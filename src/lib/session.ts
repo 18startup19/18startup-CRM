@@ -1,5 +1,8 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import type { Session } from "./session-types";
+
+export type { Session } from "./session-types";
 
 const COOKIE = "crm_session";
 const SESSION_DURATION = "30d";
@@ -8,13 +11,6 @@ function getSecret() {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("Missing SESSION_SECRET env var.");
   return new TextEncoder().encode(secret);
-}
-
-export interface Session {
-  userId: string;
-  email: string;
-  name: string;
-  role: "admin" | "member";
 }
 
 export async function createSession(data: Session) {

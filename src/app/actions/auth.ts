@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { clearSession, createSession } from "@/lib/session";
+import type { UserRow } from "@/lib/database.types";
 
 export interface LoginResult {
   error?: string;
@@ -20,7 +21,7 @@ export async function loginAction(_prev: LoginResult, formData: FormData): Promi
     .from("users")
     .select("*")
     .eq("email", email)
-    .maybeSingle();
+    .maybeSingle<UserRow>();
 
   if (error || !user || !user.is_active) {
     return { error: "Invalid email or password." };

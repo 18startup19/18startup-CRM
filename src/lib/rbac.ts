@@ -1,4 +1,4 @@
-import type { Session } from "./session";
+import type { Session } from "./session-types";
 
 // Per-member capability keys. Admins bypass these entirely.
 // Kept as string literal union so callers get autocomplete.

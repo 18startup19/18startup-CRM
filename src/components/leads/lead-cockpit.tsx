@@ -37,7 +37,7 @@ import type {
   UserRow,
   WhatsAppTemplateRow,
 } from "@/lib/database.types";
-import type { Session } from "@/lib/session";
+import type { Session } from "@/lib/session-types";
 import { hasPermission } from "@/lib/rbac";
 import { useToast } from "@/components/ui/toast";
 import { TagChipInput } from "@/components/ui/tag-chip-input";

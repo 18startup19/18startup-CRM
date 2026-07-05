@@ -45,14 +45,17 @@ export async function importCsvAction(_prev: ImportResult, form: FormData): Prom
     sb.from("users").select("id,email").eq("is_active", true),
   ]);
 
-  const pipelineByName = new Map(
-    (pipelinesData ?? []).map((p) => [p.name.toLowerCase(), p.id] as const),
+  const pipelineByName = new Map<string, string>(
+    (pipelinesData ?? []).map((p) => [String(p.name).toLowerCase(), String(p.id)]),
   );
-  const stageByKey = new Map(
-    (stagesData ?? []).map((s) => [`${s.pipeline_id}|${s.name.toLowerCase()}`, s.id] as const),
+  const stageByKey = new Map<string, string>(
+    (stagesData ?? []).map((s) => [
+      `${s.pipeline_id}|${String(s.name).toLowerCase()}`,
+      String(s.id),
+    ]),
   );
-  const userByEmail = new Map(
-    (usersData ?? []).map((u) => [u.email.toLowerCase(), u.id] as const),
+  const userByEmail = new Map<string, string>(
+    (usersData ?? []).map((u) => [String(u.email).toLowerCase(), String(u.id)]),
   );
 
   const createdPipelines: string[] = [];
@@ -205,14 +208,14 @@ export async function importCsvAction(_prev: ImportResult, form: FormData): Prom
     };
   }
 
-  const { error, count } = await sb.from("leads").insert(rows).select("id", { count: "exact" });
+  const { data: insertedRows, error } = await sb.from("leads").insert(rows).select("id");
   if (error) return { error: error.message };
 
   revalidatePath("/leads/kanban");
   revalidatePath("/leads");
   return {
     ok: true,
-    inserted: count ?? rows.length,
+    inserted: insertedRows?.length ?? rows.length,
     skipped,
     created: { pipelines: createdPipelines, stages: createdStages },
   };
