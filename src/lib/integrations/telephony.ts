@@ -117,19 +117,30 @@ async function callerdeskInitiate(agentPhone: string, customerPhone: string): Pr
     // Some deployments return text/plain OK responses — treat as opaque.
   }
 
-  if (!res.ok) {
+  // CallerDesk returns HTTP 200 even for failures — it embeds { type: "error",
+  // message: "..." } in the JSON body. Treat that as a real failure so the CRM
+  // toast surfaces the reason (e.g. "Agent on break", "Invalid virtual number")
+  // instead of silently pretending the call was queued.
+  const looksLikeError =
+    (typeof data.type === "string" && data.type.toLowerCase() === "error") ||
+    (typeof data.status === "string" && data.status.toLowerCase() === "error") ||
+    (typeof data.success === "boolean" && data.success === false);
+
+  if (!res.ok || looksLikeError) {
     const msg =
       (typeof data.message === "string" && data.message) ||
       (typeof data.error === "string" && data.error) ||
+      (typeof data.description === "string" && data.description) ||
       text.slice(0, 200) ||
       `HTTP ${res.status}`;
-    throw new Error(`CallerDesk error: ${msg}`);
+    throw new Error(`CallerDesk: ${msg}`);
   }
 
   const id =
     (typeof data.unique_id === "string" && data.unique_id) ||
     (typeof data.call_id === "string" && data.call_id) ||
     (typeof data.callId === "string" && data.callId) ||
+    (typeof data.request_id === "string" && data.request_id) ||
     "";
   return id || `cd-${Date.now()}`;
 }
