@@ -99,8 +99,8 @@ async function callerdeskInitiate(agentPhone: string, customerPhone: string): Pr
   if (!virtualNumber) throw new Error("Missing CALLERDESK_VIRTUAL_NUMBER.");
 
   const params = new URLSearchParams({
-    calling_party_a: normalize(agentPhone),
-    calling_party_b: normalize(customerPhone),
+    calling_party_a: toIndianNational(agentPhone),
+    calling_party_b: toIndianNational(customerPhone),
     deskphone: normalize(virtualNumber),
     authcode,
     call_from_did: "1",
@@ -148,8 +148,18 @@ async function callerdeskInitiate(agentPhone: string, customerPhone: string): Pr
 function normalize(raw: string): string {
   const t = raw.trim();
   if (!t) return t;
-  // CallerDesk expects Indian numbers without the leading + — 10 or 12 digits.
-  // We normalise to digits-only; callers should pass numbers already in E.164
-  // or plain 10-digit form.
   return t.replace(/[^\d]/g, "");
+}
+
+// CallerDesk's agent-lookup keys on the 10-digit Indian mobile number without
+// country code. E.164 (+91xxxxxxxxxx) or 12-digit (91xxxxxxxxxx) will trigger
+// a misleading "Agent on break/Inactive" response. Strip the 91 prefix, and
+// any single leading 0, so `+918886956636`, `08886956636`, and `8886956636`
+// all resolve to `8886956636`.
+function toIndianNational(raw: string): string {
+  const digits = normalize(raw);
+  if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
+  if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+  if (digits.length === 13 && digits.startsWith("091")) return digits.slice(3);
+  return digits;
 }
