@@ -80,32 +80,34 @@ export async function initiateCall({
 }
 
 // ── CallerDesk click-to-call adapter ───────────────────────────────────────
-// Docs: https://docs.callerdesk.io/ (Click2Call APIs section).
-// The endpoint accepts JSON with the account auth code, agent phone (callerid),
-// customer phone (receivernum), and the virtual DID (virtualnumber). CallerDesk
-// then dials the agent first; when they pick up it bridges to the customer.
-// Response typically returns a call_id / unique_id we store as
-// provider_message_id so the webhook can later attach status + duration.
+// Endpoint: GET https://app.callerdesk.io/api/click_to_call_v2
+// Params (per CallerDesk docs "Click_to_call (Normal)"):
+//   calling_party_a  — agent phone (Party A dialled first)
+//   calling_party_b  — customer phone (Party B, bridged when A answers)
+//   deskphone        — CallerDesk virtual DID that shows as caller ID
+//   authcode         — account API auth code
+//   call_from_did=1  — originate outbound so the customer sees deskphone
+// Response is JSON; we grab unique_id / call_id as provider_message_id so the
+// webhook can attach status + duration later.
 
 async function callerdeskInitiate(agentPhone: string, customerPhone: string): Promise<string> {
   const authcode = process.env.CALLERDESK_AUTHCODE;
   const virtualNumber = process.env.CALLERDESK_VIRTUAL_NUMBER;
-  const url = process.env.CALLERDESK_API_URL ?? "https://api.callerdesk.io/v1/click_to_call";
+  const baseUrl =
+    process.env.CALLERDESK_API_URL ?? "https://app.callerdesk.io/api/click_to_call_v2";
   if (!authcode) throw new Error("Missing CALLERDESK_AUTHCODE.");
   if (!virtualNumber) throw new Error("Missing CALLERDESK_VIRTUAL_NUMBER.");
 
-  const payload = {
+  const params = new URLSearchParams({
+    calling_party_a: normalize(agentPhone),
+    calling_party_b: normalize(customerPhone),
+    deskphone: normalize(virtualNumber),
     authcode,
-    callerid: normalize(agentPhone),
-    receivernum: normalize(customerPhone),
-    virtualnumber: normalize(virtualNumber),
-  };
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    call_from_did: "1",
   });
+
+  const url = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${params.toString()}`;
+  const res = await fetch(url, { method: "GET" });
 
   const text = await res.text();
   let data: Record<string, unknown> = {};
@@ -124,7 +126,6 @@ async function callerdeskInitiate(agentPhone: string, customerPhone: string): Pr
     throw new Error(`CallerDesk error: ${msg}`);
   }
 
-  // Provider returns different id fields across API versions.
   const id =
     (typeof data.unique_id === "string" && data.unique_id) ||
     (typeof data.call_id === "string" && data.call_id) ||
