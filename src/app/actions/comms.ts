@@ -48,16 +48,36 @@ export async function sendWhatsAppAction(leadId: string, form: FormData): Promis
   revalidatePath(`/leads/${leadId}`);
 }
 
-export async function callAction(leadId: string, form: FormData): Promise<void> {
+export interface CallResult {
+  ok?: boolean;
+  error?: string;
+}
+
+export async function callAction(leadId: string, form: FormData): Promise<CallResult> {
   const session = await requireSession();
-  const agentPhone = String(form.get("agent_phone") ?? process.env.TELEPHONY_CALLER_ID ?? "");
   const sb = supabaseAdmin();
+
+  const formPhone = String(form.get("agent_phone") ?? "").trim();
+  let agentPhone = formPhone;
+  if (!agentPhone) {
+    const { data: me } = await sb
+      .from("users")
+      .select("phone")
+      .eq("id", session.userId)
+      .maybeSingle<{ phone: string | null }>();
+    agentPhone = me?.phone?.trim() ?? "";
+  }
+  if (!agentPhone) agentPhone = process.env.TELEPHONY_CALLER_ID ?? "";
+
   const { data: lead } = await sb.from("leads").select("*").eq("id", leadId).single();
-  if (!lead) return;
-  await initiateCall({
+  if (!lead) return { ok: false, error: "Lead not found." };
+
+  const result = await initiateCall({
     lead: lead as LeadRow,
     agentPhone,
     actorId: session.userId,
   });
+
   revalidatePath(`/leads/${leadId}`);
+  return { ok: result.ok, error: result.error };
 }

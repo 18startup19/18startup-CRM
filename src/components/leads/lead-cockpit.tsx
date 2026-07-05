@@ -164,7 +164,9 @@ export function LeadCockpit({
             {canCall && lead.phone && !lead.is_dnc && (
               <form
                 action={async (fd) => {
-                  await callAction(lead.id, fd);
+                  const res = await callAction(lead.id, fd);
+                  if (res?.error) toast(res.error, "error");
+                  else toast("Call initiated — your phone will ring shortly.");
                 }}
               >
                 <input type="hidden" name="agent_phone" value="" />

@@ -40,6 +40,7 @@ export interface UserRow {
   is_active: boolean;
   permissions: Record<string, boolean>;
   pipeline_ids: string[];
+  phone: string | null;
   last_login_at: string | null;
   created_at: string;
   updated_at: string;

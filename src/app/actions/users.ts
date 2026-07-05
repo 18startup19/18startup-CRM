@@ -66,6 +66,8 @@ export async function updateUserAction(userId: string, form: FormData): Promise<
     if (id) pipelineIds.push(id);
   }
 
+  const phone = String(form.get("phone") ?? "").trim() || null;
+
   const sb = supabaseAdmin();
   await sb
     .from("users")
@@ -75,6 +77,7 @@ export async function updateUserAction(userId: string, form: FormData): Promise<
       is_active: isActive,
       permissions,
       pipeline_ids: pipelineIds,
+      phone,
     })
     .eq("id", userId);
 

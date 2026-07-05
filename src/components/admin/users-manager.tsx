@@ -185,6 +185,16 @@ function EditUserModal({
             <Input id="e-name" name="name" defaultValue={user.name} required />
           </div>
           <div className="flex flex-col gap-[7px]">
+            <FieldLabel htmlFor="e-phone">Phone (for click-to-call)</FieldLabel>
+            <Input
+              id="e-phone"
+              name="phone"
+              type="tel"
+              defaultValue={user.phone ?? ""}
+              placeholder="+91xxxxxxxxxx"
+            />
+          </div>
+          <div className="flex flex-col gap-[7px]">
             <FieldLabel htmlFor="e-role">Role</FieldLabel>
             <Select id="e-role" name="role" defaultValue={user.role}>
               <option value="member">Team member</option>
