@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #141414;
+
+  /* 18startup brand */
+  --brand-orange: #f37335;
+  --brand-orange-dark: #e8621f;
+  --brand-yellow: #fff392;
+  --brand-charcoal: #1a1a1a;
+  --brand-dark-text: #494949;
+  --brand-bg: #fafafa;
+  --brand-border: #e8e8e8;
+
+  /* Stage / status colors */
+  --status-blue: #4a90e2;
+  --status-purple: #7b61ff;
+  --status-green: #2ecc71;
+  --status-red: #ef4444;
+  --status-slate: #94a3b8;
+  --status-amber: #f5a623;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-orange-dark: var(--brand-orange-dark);
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-charcoal: var(--brand-charcoal);
+  --color-brand-dark-text: var(--brand-dark-text);
+  --color-brand-bg: var(--brand-bg);
+  --color-brand-border: var(--brand-border);
+  --font-sans: var(--font-lato);
+}
+
+body {
+  background: var(--brand-bg);
+  color: var(--foreground);
+  font-family: var(--font-lato), "Poppins", sans-serif;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: var(--brand-border);
+  border-radius: 3px;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
