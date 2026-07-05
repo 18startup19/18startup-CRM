@@ -12,6 +12,39 @@ import type {
 
 const DEFAULT_CARD_FIELDS = ["phone", "next_callback_at"];
 
+function matchJsFilter(
+  lead: LeadRow,
+  f: { field: string; op: string; value: string },
+  stageNameById: Map<string, string>,
+): boolean {
+  let val: unknown;
+  if (f.field === "stage") {
+    val = lead.stage_id ? stageNameById.get(lead.stage_id) ?? "" : "";
+  } else if (f.field === "is_dnc") {
+    val = lead.is_dnc;
+  } else if (f.field.startsWith("custom.")) {
+    val = (lead.custom as Record<string, unknown>)?.[f.field.slice(7)];
+  } else {
+    val = (lead as unknown as Record<string, unknown>)[f.field];
+  }
+  const target = f.value.toLowerCase();
+  const cur = val == null ? "" : String(val).toLowerCase();
+  switch (f.op) {
+    case "eq":
+      return cur === target;
+    case "neq":
+      return cur !== target;
+    case "contains":
+      return cur.includes(target);
+    case "is_empty":
+      return cur === "";
+    case "is_not_empty":
+      return cur !== "";
+    default:
+      return true;
+  }
+}
+
 type SortKey = "updated_desc" | "created_desc" | "created_asc" | "name_asc";
 
 interface PageProps {
@@ -22,6 +55,9 @@ interface PageProps {
     tag?: string;
     dnc?: string;
     sort?: SortKey;
+    // Generic field filters: filter=<field>|<op>|<value> (URL-encoded).
+    // May appear multiple times. Handled by getAll("filter").
+    filter?: string | string[];
   }>;
 }
 
@@ -104,11 +140,47 @@ export default async function KanbanPage({ searchParams }: PageProps) {
     leadsQuery = leadsQuery.or(`name.ilike.${q},phone.ilike.${q},email.ilike.${q}`);
   }
 
+  // Generic filters — each entry is "field|op|value". We apply built-in
+  // columns via SQL and stash the rest for JS post-filtering (custom fields,
+  // which live inside the JSONB `custom` column, and stage-name).
+  const rawFilters = Array.isArray(params.filter)
+    ? params.filter
+    : params.filter
+      ? [params.filter]
+      : [];
+  const jsFilters: { field: string; op: string; value: string }[] = [];
+  for (const raw of rawFilters) {
+    const [field, op, ...rest] = raw.split("|");
+    const value = rest.join("|");
+    if (!field || !op) continue;
+    // Try to push into SQL for built-in fields
+    if (["name", "phone", "email", "source"].includes(field)) {
+      if (op === "eq") leadsQuery = leadsQuery.eq(field, value);
+      else if (op === "neq") leadsQuery = leadsQuery.neq(field, value);
+      else if (op === "contains") {
+        const v = `%${value.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+        leadsQuery = leadsQuery.ilike(field, v);
+      } else if (op === "is_empty") leadsQuery = leadsQuery.or(`${field}.is.null,${field}.eq.`);
+      else if (op === "is_not_empty") leadsQuery = leadsQuery.not(field, "is", null);
+      else jsFilters.push({ field, op, value });
+    } else {
+      // stage-name, custom.*, is_dnc, etc. — post-filter in JS
+      jsFilters.push({ field, op, value });
+    }
+  }
+
   const { data: leadsData } = await leadsQuery;
   const stageIdSet = new Set(stageIds);
-  const leads = ((leadsData ?? []) as LeadRow[]).filter(
+  let leads = ((leadsData ?? []) as LeadRow[]).filter(
     (l) => l.stage_id && stageIdSet.has(l.stage_id),
   );
+
+  if (jsFilters.length > 0) {
+    const stageNameById = new Map(allStages.map((s) => [s.id, s.name.toLowerCase()]));
+    leads = leads.filter((l) =>
+      jsFilters.every((f) => matchJsFilter(l, f, stageNameById)),
+    );
+  }
 
   const leadsByStage = leads.reduce<Record<string, LeadRow[]>>((acc, l) => {
     if (!l.stage_id) return acc;
@@ -121,10 +193,22 @@ export default async function KanbanPage({ searchParams }: PageProps) {
     ? (cfg.kanban_card_fields as string[])
     : DEFAULT_CARD_FIELDS;
 
-  // Distinct tags from the currently loaded leads (feeds the filter dropdown)
+  // Distinct tags from every non-archived lead — so the filter dropdown and
+  // the tag chip input suggestions include tags used on OTHER leads too, not
+  // just what's currently visible.
+  const { data: tagRows } = await sb.from("leads").select("tags").limit(5000);
   const tagSet = new Set<string>();
-  for (const l of leads) for (const t of l.tags ?? []) tagSet.add(t);
+  for (const row of (tagRows ?? []) as { tags: string[] | null }[]) {
+    for (const t of row.tags ?? []) tagSet.add(t);
+  }
   const tagOptions = Array.from(tagSet).sort();
+
+  const activeFilters = rawFilters
+    .map((raw) => {
+      const [field, op, ...rest] = raw.split("|");
+      return field && op ? { field, op, value: rest.join("|") } : null;
+    })
+    .filter((x): x is { field: string; op: string; value: string } => x !== null);
 
   return (
     <>
@@ -133,6 +217,7 @@ export default async function KanbanPage({ searchParams }: PageProps) {
         pipelines={pipelines}
         activePipelineId={activePipelineId}
         stages={stages}
+        allStages={allStages}
         leadsByStage={leadsByStage}
         customFields={customFields}
         cardFields={cardFields}
@@ -147,6 +232,7 @@ export default async function KanbanPage({ searchParams }: PageProps) {
           sort,
         }}
         tagOptions={tagOptions}
+        activeFilters={activeFilters}
       />
     </>
   );

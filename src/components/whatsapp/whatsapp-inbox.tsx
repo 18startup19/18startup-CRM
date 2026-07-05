@@ -38,6 +38,18 @@ export function WhatsAppInbox({
   const router = useRouter();
   const [search, setSearch] = useState("");
 
+  // Poll the server for new inbound messages every 5 seconds. router.refresh()
+  // re-renders the server component in place — much cheaper than a full nav.
+  useEffect(() => {
+    const id = setInterval(() => router.refresh(), 5000);
+    const onFocus = () => router.refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [router]);
+
   const filtered = search
     ? conversations.filter(
         (c) =>

@@ -1,11 +1,10 @@
-import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
-import type { LeadRow } from "@/lib/database.types";
-import { formatDateTime } from "@/lib/utils";
+import type { CommunicationRow, LeadRow } from "@/lib/database.types";
 import { CallbacksRangePicker } from "@/components/leads/callbacks-range-picker";
+import { CallbacksView } from "@/components/leads/callbacks-view";
 
 type RangeKey =
   | "today"
@@ -81,34 +80,78 @@ export default async function CallbacksPage({ searchParams }: PageProps) {
   const key: RangeKey = params.range ?? "today";
   const { from, to, label } = computeRange(key, params.from, params.to);
 
-  const in24 = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  const nowMs = Date.now();
-
-  const [{ data: leadsData }, { data: commsData }] = await Promise.all([
+  const [
+    { data: callbacksData },
+    { data: callsData },
+    { data: usersData },
+    { data: notesData },
+  ] = await Promise.all([
+    // Callbacks due within the selected range (today by default)
     sb
       .from("leads")
-      .select("*")
+      .select("id,name,phone,next_callback_at,stage_id")
       .eq("owner_id", session.userId)
       .not("next_callback_at", "is", null)
-      .lte("next_callback_at", in24)
+      .gte("next_callback_at", from.toISOString())
+      .lte("next_callback_at", to.toISOString())
       .order("next_callback_at", { ascending: true }),
+    // ALL call communications by this user in the range
     sb
       .from("communications")
-      .select("id,channel,status,duration_seconds,created_at")
+      .select("*")
       .eq("actor_id", session.userId)
       .eq("channel", "call")
+      .gte("created_at", from.toISOString())
+      .lte("created_at", to.toISOString())
+      .order("created_at", { ascending: false }),
+    sb.from("users").select("id,name").eq("is_active", true),
+    sb
+      .from("lead_notes")
+      .select("id,lead_id,author_id,body,created_at")
+      .eq("author_id", session.userId)
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString()),
   ]);
 
-  const leads = (leadsData ?? []) as LeadRow[];
-  const calls = (commsData ?? []) as {
-    id: string;
-    channel: string;
-    status: string;
-    duration_seconds: number | null;
+  const upcomingLeads = (callbacksData ?? []) as Pick<
+    LeadRow,
+    "id" | "name" | "phone" | "next_callback_at" | "stage_id"
+  >[];
+  const calls = (callsData ?? []) as CommunicationRow[];
+  const users = (usersData ?? []) as { id: string; name: string }[];
+  const notesByLead = new Map<string, { body: string; created_at: string }[]>();
+  for (const n of (notesData ?? []) as {
+    lead_id: string;
+    body: string;
     created_at: string;
-  }[];
+  }[]) {
+    const arr = notesByLead.get(n.lead_id) ?? [];
+    arr.push({ body: n.body, created_at: n.created_at });
+    notesByLead.set(n.lead_id, arr);
+  }
+
+  // Fetch names for leads referenced by the calls
+  const leadIds = Array.from(
+    new Set([...calls.map((c) => c.lead_id), ...upcomingLeads.map((l) => l.id)]),
+  );
+  const { data: leadsForCalls } =
+    leadIds.length > 0
+      ? await sb
+          .from("leads")
+          .select("id,name,phone")
+          .in("id", leadIds)
+      : { data: [] };
+  const leadNameById = new Map<string, string>(
+    ((leadsForCalls ?? []) as { id: string; name: string }[]).map((l) => [
+      l.id,
+      l.name,
+    ]),
+  );
+  const leadPhoneById = new Map<string, string | null>(
+    ((leadsForCalls ?? []) as { id: string; name: string; phone: string | null }[]).map(
+      (l) => [l.id, l.phone],
+    ),
+  );
 
   const totalCalls = calls.length;
   const answered = calls.filter((c) => c.status === "answered").length;
@@ -121,12 +164,12 @@ export default async function CallbacksPage({ searchParams }: PageProps) {
     <>
       <PageHeader
         title="My callbacks"
-        subtitle="Leads with callbacks due in the next 24 hours."
+        subtitle="Callbacks and call logs. Default view is today (midnight to midnight)."
       />
       <div className="p-8 flex flex-col gap-6">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="text-[12px] font-bold uppercase tracking-[0.6px] text-brand-dark-text">
-            Call stats · {label}
+            {label}
           </div>
           <CallbacksRangePicker
             current={key}
@@ -144,67 +187,14 @@ export default async function CallbacksPage({ searchParams }: PageProps) {
           <StatCard label="Total duration" value={formatDuration(totalDurationSecs)} />
         </div>
 
-        <div>
-          <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
-            Upcoming callbacks
-          </h2>
-          <Card className="p-0 overflow-hidden">
-            <table className="w-full text-[14px]">
-              <thead className="bg-brand-bg border-b border-brand-border text-left">
-                <tr>
-                  <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
-                    Phone
-                  </th>
-                  <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
-                    Callback at
-                  </th>
-                  <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {leads.map((l) => {
-                  const overdue =
-                    l.next_callback_at && new Date(l.next_callback_at).getTime() < nowMs;
-                  return (
-                    <tr key={l.id} className="border-b border-brand-border last:border-none">
-                      <td className="px-6 py-3">
-                        <Link
-                          href={`/leads/${l.id}`}
-                          className="font-bold text-brand-charcoal hover:text-brand-orange"
-                        >
-                          {l.name}
-                        </Link>
-                      </td>
-                      <td className="px-6 py-3 text-brand-dark-text">{l.phone ?? "—"}</td>
-                      <td className="px-6 py-3 text-brand-dark-text">
-                        {formatDateTime(l.next_callback_at)}
-                      </td>
-                      <td className="px-6 py-3">
-                        {overdue ? (
-                          <span className="text-red-600 font-bold text-[12px]">OVERDUE</span>
-                        ) : (
-                          <span className="text-brand-orange font-bold text-[12px]">Upcoming</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {leads.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-16 text-center text-brand-dark-text">
-                      No callbacks scheduled in the next 24 hours.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </Card>
-        </div>
+        <CallbacksView
+          upcomingLeads={upcomingLeads}
+          calls={calls}
+          leadNameById={Object.fromEntries(leadNameById)}
+          leadPhoneById={Object.fromEntries(leadPhoneById)}
+          notesByLead={Object.fromEntries(notesByLead)}
+          actorNamesById={Object.fromEntries(users.map((u) => [u.id, u.name]))}
+        />
       </div>
     </>
   );

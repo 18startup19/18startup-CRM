@@ -15,11 +15,13 @@ export function LeadForm({
   fields,
   users,
   currentUserId,
+  tagSuggestions = [],
 }: {
   stages: LeadStageRow[];
   fields: CustomFieldRow[];
   users: Pick<UserRow, "id" | "name" | "email">[];
   currentUserId: string;
+  tagSuggestions?: string[];
 }) {
   const [state, formAction, isPending] = useActionState(createLeadAction, initial);
   const router = useRouter();
@@ -38,7 +40,12 @@ export function LeadForm({
           </div>
           <div className="flex flex-col gap-[7px] col-span-2">
             <FieldLabel htmlFor="tags">Tags</FieldLabel>
-            <TagChipInput id="tags" name="tags" placeholder="Type and press Enter" />
+            <TagChipInput
+              id="tags"
+              name="tags"
+              placeholder="Type and press Enter"
+              suggestions={tagSuggestions}
+            />
           </div>
           <div className="flex flex-col gap-[7px]">
             <FieldLabel htmlFor="phone">Phone</FieldLabel>

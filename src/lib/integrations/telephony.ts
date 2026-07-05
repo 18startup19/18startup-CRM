@@ -137,6 +137,8 @@ async function callerdeskInitiate(agentPhone: string, customerPhone: string): Pr
   }
 
   const id =
+    (typeof data.campid === "string" && data.campid) ||
+    (typeof data.campid === "number" && String(data.campid)) ||
     (typeof data.unique_id === "string" && data.unique_id) ||
     (typeof data.call_id === "string" && data.call_id) ||
     (typeof data.callId === "string" && data.callId) ||

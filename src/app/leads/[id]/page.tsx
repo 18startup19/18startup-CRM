@@ -23,7 +23,7 @@ export default async function LeadDetailPage({ params }: Params) {
   const { id } = await params;
   const sb = supabaseAdmin();
 
-  const [leadRes, stagesRes, fieldsRes, usersRes, notesRes, actsRes, commsRes, emailTplRes, waTplRes, meRes] =
+  const [leadRes, stagesRes, fieldsRes, usersRes, notesRes, actsRes, commsRes, emailTplRes, waTplRes, meRes, tagRes] =
     await Promise.all([
       sb.from("leads").select("*").eq("id", id).maybeSingle(),
       sb.from("lead_stages").select("*").eq("is_archived", false).order("position"),
@@ -35,7 +35,14 @@ export default async function LeadDetailPage({ params }: Params) {
       sb.from("email_templates").select("*").eq("is_archived", false).order("name"),
       sb.from("whatsapp_templates").select("*").eq("is_active", true).order("name"),
       sb.from("users").select("permissions").eq("id", session.userId).maybeSingle(),
+      sb.from("leads").select("tags").limit(5000),
     ]);
+
+  const tagSuggestionSet = new Set<string>();
+  for (const row of (tagRes.data ?? []) as { tags: string[] | null }[]) {
+    for (const t of row.tags ?? []) tagSuggestionSet.add(t);
+  }
+  const tagSuggestions = Array.from(tagSuggestionSet).sort();
 
   const lead = leadRes.data as LeadRow | null;
   if (!lead) notFound();
@@ -59,6 +66,7 @@ export default async function LeadDetailPage({ params }: Params) {
       communications={(commsRes.data ?? []) as CommunicationRow[]}
       emailTemplates={(emailTplRes.data ?? []) as EmailTemplateRow[]}
       whatsappTemplates={(waTplRes.data ?? []) as WhatsAppTemplateRow[]}
+      tagSuggestions={tagSuggestions}
     />
   );
 }

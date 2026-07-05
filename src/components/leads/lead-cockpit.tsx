@@ -22,7 +22,6 @@ import {
   deleteLeadAction,
   logCallOutcomeAction,
   updateLeadAction,
-  updateStageAction,
 } from "@/app/actions/leads";
 import { callAction, sendEmailAction, sendWhatsAppAction } from "@/app/actions/comms";
 import { CustomFieldInput } from "@/components/leads/lead-form";
@@ -68,9 +67,10 @@ interface Props {
   communications: CommunicationRow[];
   emailTemplates: EmailTemplateRow[];
   whatsappTemplates: WhatsAppTemplateRow[];
+  tagSuggestions: string[];
 }
 
-type TabKey = "timeline" | "notes" | "history" | "log";
+type TabKey = "timeline" | "notes" | "history";
 
 export function LeadCockpit({
   session,
@@ -84,6 +84,7 @@ export function LeadCockpit({
   communications,
   emailTemplates,
   whatsappTemplates,
+  tagSuggestions,
 }: Props) {
   const [pending, start] = useTransition();
   const [tab, setTab] = useState<TabKey>("timeline");
@@ -193,9 +194,6 @@ export function LeadCockpit({
             <TabButton active={tab === "history"} onClick={() => setTab("history")}>
               History
             </TabButton>
-            <TabButton active={tab === "log"} onClick={() => setTab("log")}>
-              Log the call
-            </TabButton>
           </div>
 
           {tab === "timeline" && (
@@ -229,12 +227,12 @@ export function LeadCockpit({
           )}
 
           {tab === "notes" && (
-            <div className="p-6">
+            <div className="p-6 flex flex-col gap-6">
               <form
                 action={async (fd) => {
                   await createNoteAction(lead.id, fd);
                 }}
-                className="flex flex-col gap-3 mb-6"
+                className="flex flex-col gap-3"
               >
                 <Textarea name="body" placeholder="Add a note…" rows={3} required />
                 <div className="flex justify-end">
@@ -243,21 +241,74 @@ export function LeadCockpit({
                   </Button>
                 </div>
               </form>
-              <ul className="flex flex-col gap-3">
-                {notes.map((n) => (
-                  <li key={n.id} className="border-l-2 border-brand-orange pl-4 py-1">
-                    <p className="text-[14px] text-brand-charcoal whitespace-pre-wrap">{n.body}</p>
-                    <p className="text-[11px] text-brand-dark-text mt-1">
-                      {formatDateTime(n.created_at)}
-                    </p>
-                  </li>
-                ))}
-                {notes.length === 0 && (
-                  <li className="text-center text-brand-dark-text py-6 text-[13px]">
-                    No notes yet.
-                  </li>
-                )}
-              </ul>
+
+              <div className="border-t border-brand-border pt-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[13px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
+                    Log a call
+                  </h3>
+                  <span className="text-[11px] text-brand-dark-text">
+                    Capture outcome after a call.
+                  </span>
+                </div>
+                <form
+                  action={async (fd) => {
+                    await logCallOutcomeAction(lead.id, fd);
+                  }}
+                  className="flex flex-col gap-3"
+                >
+                  <div className="flex flex-col gap-[7px]">
+                    <FieldLabel>Outcome</FieldLabel>
+                    <div className="grid grid-cols-4 gap-2">
+                      {OUTCOME_OPTIONS.map((o) => (
+                        <label
+                          key={o.value}
+                          className="flex items-center gap-2 px-3 py-2 rounded-[10px] border border-brand-border bg-brand-bg cursor-pointer hover:border-brand-orange transition-colors has-[:checked]:border-brand-orange has-[:checked]:bg-[#FFF4EF]"
+                        >
+                          <input type="radio" name="outcome" value={o.value} required />
+                          <span className="text-[12.5px] font-semibold text-brand-charcoal">
+                            {o.label}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-[7px]">
+                    <FieldLabel htmlFor="lc-callback">Callback at (optional)</FieldLabel>
+                    <Input id="lc-callback" name="next_callback_at" type="datetime-local" />
+                  </div>
+                  <div className="flex flex-col gap-[7px]">
+                    <FieldLabel htmlFor="lc-summary">Summary</FieldLabel>
+                    <Textarea id="lc-summary" name="summary" rows={2} placeholder="What did they say?" />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="submit" size="sm">
+                      <Save size={14} className="inline mr-1.5 -mt-0.5" /> Save outcome
+                    </Button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="border-t border-brand-border pt-5">
+                <h3 className="text-[13px] font-bold uppercase tracking-[0.5px] text-brand-dark-text mb-3">
+                  Notes ({notes.length})
+                </h3>
+                <ul className="flex flex-col gap-3">
+                  {notes.map((n) => (
+                    <li key={n.id} className="border-l-2 border-brand-orange pl-4 py-1">
+                      <p className="text-[14px] text-brand-charcoal whitespace-pre-wrap">{n.body}</p>
+                      <p className="text-[11px] text-brand-dark-text mt-1">
+                        {formatDateTime(n.created_at)}
+                      </p>
+                    </li>
+                  ))}
+                  {notes.length === 0 && (
+                    <li className="text-center text-brand-dark-text py-6 text-[13px]">
+                      No notes yet.
+                    </li>
+                  )}
+                </ul>
+              </div>
             </div>
           )}
 
@@ -284,59 +335,6 @@ export function LeadCockpit({
             </div>
           )}
 
-          {tab === "log" && (
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[15px] font-bold text-brand-charcoal">Log the call</h2>
-                <span className="text-[12px] text-brand-dark-text">
-                  Capture outcome, then jump to the next lead.
-                </span>
-              </div>
-              <form
-                action={async (fd) => {
-                  await logCallOutcomeAction(lead.id, fd);
-                }}
-                className="flex flex-col gap-4"
-              >
-                <div className="flex flex-col gap-[7px]">
-                  <FieldLabel>Outcome</FieldLabel>
-                  <div className="grid grid-cols-4 gap-2">
-                    {OUTCOME_OPTIONS.map((o) => (
-                      <label
-                        key={o.value}
-                        className="flex items-center gap-2 px-3 py-2.5 rounded-[10px] border border-brand-border bg-brand-bg cursor-pointer hover:border-brand-orange transition-colors has-[:checked]:border-brand-orange has-[:checked]:bg-[#FFF4EF]"
-                      >
-                        <input type="radio" name="outcome" value={o.value} required />
-                        <span className="text-[13px] font-semibold text-brand-charcoal">
-                          {o.label}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-[7px]">
-                    <FieldLabel htmlFor="duration_seconds">Duration (seconds)</FieldLabel>
-                    <Input id="duration_seconds" name="duration_seconds" type="number" min={0} />
-                  </div>
-                  <div className="flex flex-col gap-[7px]">
-                    <FieldLabel htmlFor="next_callback_at">Callback at</FieldLabel>
-                    <Input id="next_callback_at" name="next_callback_at" type="datetime-local" />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-[7px]">
-                  <FieldLabel htmlFor="summary">Summary / notes</FieldLabel>
-                  <Textarea id="summary" name="summary" rows={2} placeholder="What did they say?" />
-                </div>
-                <div className="flex justify-end gap-3">
-                  <Button type="submit" size="md">
-                    <Save size={16} className="inline mr-2 -mt-0.5" /> Save outcome
-                  </Button>
-                </div>
-              </form>
-            </div>
-          )}
         </Card>
 
         {/* RIGHT: owner on top, then details */}
@@ -397,6 +395,7 @@ export function LeadCockpit({
                   name="tags"
                   placeholder="Type and press Enter"
                   defaultValue={lead.tags ?? []}
+                  suggestions={tagSuggestions}
                 />
               </div>
               <div className="flex flex-col gap-[7px]">
@@ -445,29 +444,6 @@ export function LeadCockpit({
                 Save
               </Button>
             </form>
-          </Card>
-
-          <Card className="p-6">
-            <div className="text-[11px] font-bold uppercase tracking-[1px] text-brand-dark-text mb-3">
-              Quick stage change
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {stages.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => start(() => updateStageAction(lead.id, s.id))}
-                  disabled={pending || s.id === lead.stage_id}
-                  className="px-3 py-1.5 rounded-full text-[12px] font-bold border transition-colors disabled:opacity-50"
-                  style={{
-                    background: s.id === lead.stage_id ? `${s.color}20` : "transparent",
-                    borderColor: s.color,
-                    color: s.color,
-                  }}
-                >
-                  {s.name}
-                </button>
-              ))}
-            </div>
           </Card>
 
           {canDelete && (

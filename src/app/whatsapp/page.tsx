@@ -36,43 +36,73 @@ export default async function WhatsAppPage({ searchParams }: PageProps) {
     session.role === "admin" ||
     (userRow?.permissions as Record<string, boolean> | null)?.["leads:view_all"] === true;
 
-  // Pull the most recent WhatsApp comms and group them by lead. Cap at 500 rows
-  // for the initial load — enough for a busy inbox and cheap for postgres.
-  let commsQ = sb
-    .from("communications")
-    .select("id,lead_id,body,direction,status,created_at")
-    .eq("channel", "whatsapp")
-    .order("created_at", { ascending: false })
-    .limit(500);
-
-  if (!canSeeAll) {
+  // Get distinct lead IDs that have any WhatsApp comm, then for each pick the
+  // latest message. Doing it lead-first (rather than pulling the last 500 comms
+  // and grouping) ensures older conversations don't drop off just because the
+  // 500-row window slides forward as new messages arrive.
+  let leadIdRows: { lead_id: string }[] = [];
+  if (canSeeAll) {
+    const { data } = await sb
+      .from("communications")
+      .select("lead_id")
+      .eq("channel", "whatsapp")
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    leadIdRows = (data ?? []) as { lead_id: string }[];
+  } else {
     const { data: myLeads } = await sb
       .from("leads")
       .select("id")
       .eq("owner_id", session.userId);
-    const ids = (myLeads ?? []).map((l) => l.id);
-    commsQ = commsQ.in("lead_id", ids.length ? ids : ["__none__"]);
+    const myIds = (myLeads ?? []).map((l) => l.id);
+    if (myIds.length > 0) {
+      const { data } = await sb
+        .from("communications")
+        .select("lead_id")
+        .eq("channel", "whatsapp")
+        .in("lead_id", myIds)
+        .order("created_at", { ascending: false })
+        .limit(5000);
+      leadIdRows = (data ?? []) as { lead_id: string }[];
+    }
   }
 
-  const [{ data: allComms }, { data: waTemplates }] = await Promise.all([
-    commsQ,
-    sb.from("whatsapp_templates").select("*").eq("is_active", true),
-  ]);
+  const distinctLeadIds = Array.from(new Set(leadIdRows.map((r) => r.lead_id)));
 
   type CommRow = Pick<
     CommunicationRow,
     "id" | "lead_id" | "body" | "direction" | "status" | "created_at"
   >;
-  const rows = (allComms ?? []) as CommRow[];
 
-  // Latest message per lead
+  const [{ data: latestRows }, { data: unreadRows }, { data: waTemplates }] =
+    await Promise.all([
+      distinctLeadIds.length > 0
+        ? sb
+            .from("communications")
+            .select("id,lead_id,body,direction,status,created_at")
+            .eq("channel", "whatsapp")
+            .in("lead_id", distinctLeadIds)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] }),
+      distinctLeadIds.length > 0
+        ? sb
+            .from("communications")
+            .select("lead_id,status,direction")
+            .eq("channel", "whatsapp")
+            .in("lead_id", distinctLeadIds)
+            .eq("direction", "inbound")
+            .neq("status", "read")
+        : Promise.resolve({ data: [] }),
+      sb.from("whatsapp_templates").select("*").eq("is_active", true),
+    ]);
+
   const latestByLead = new Map<string, CommRow>();
-  const unreadByLead = new Map<string, number>();
-  for (const c of rows) {
+  for (const c of (latestRows ?? []) as CommRow[]) {
     if (!latestByLead.has(c.lead_id)) latestByLead.set(c.lead_id, c);
-    if (c.direction === "inbound" && c.status !== "read") {
-      unreadByLead.set(c.lead_id, (unreadByLead.get(c.lead_id) ?? 0) + 1);
-    }
+  }
+  const unreadByLead = new Map<string, number>();
+  for (const c of (unreadRows ?? []) as { lead_id: string }[]) {
+    unreadByLead.set(c.lead_id, (unreadByLead.get(c.lead_id) ?? 0) + 1);
   }
 
   const leadIds = Array.from(latestByLead.keys());

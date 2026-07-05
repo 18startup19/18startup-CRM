@@ -46,6 +46,7 @@ export async function sendWhatsAppAction(leadId: string, form: FormData): Promis
     await sendWhatsAppText({ lead: lead as LeadRow, text, actorId: session.userId });
   }
   revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/whatsapp");
 }
 
 export interface CallResult {

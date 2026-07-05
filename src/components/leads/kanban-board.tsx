@@ -41,10 +41,17 @@ export interface KanbanFilters {
   sort: "updated_desc" | "created_desc" | "created_asc" | "name_asc";
 }
 
+export interface FieldFilter {
+  field: string;
+  op: string;
+  value: string;
+}
+
 interface Props {
   pipelines: PipelineRow[];
   activePipelineId: string;
   stages: LeadStageRow[];
+  allStages: LeadStageRow[];
   leadsByStage: Record<string, LeadRow[]>;
   customFields: CustomFieldRow[];
   cardFields: string[];
@@ -53,12 +60,14 @@ interface Props {
   isAdmin: boolean;
   filters: KanbanFilters;
   tagOptions: string[];
+  activeFilters: FieldFilter[];
 }
 
 export function KanbanBoard({
   pipelines,
   activePipelineId,
   stages,
+  allStages,
   leadsByStage: initialLeadsByStage,
   customFields,
   cardFields: initialCardFields,
@@ -67,6 +76,7 @@ export function KanbanBoard({
   isAdmin,
   filters,
   tagOptions,
+  activeFilters,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -113,11 +123,55 @@ export function KanbanBoard({
     } else if (patch.sort === "updated_desc") {
       url.searchParams.delete("sort");
     }
-    router.push(`${url.pathname}?${url.searchParams.toString()}`);
+    startTransition(() => {
+      router.push(`${url.pathname}?${url.searchParams.toString()}`);
+      router.refresh();
+    });
   }
 
   const hasActiveFilters =
-    filters.q !== "" || filters.owner !== "" || filters.tag !== "" || filters.dnc;
+    filters.q !== "" ||
+    filters.owner !== "" ||
+    filters.tag !== "" ||
+    filters.dnc ||
+    activeFilters.length > 0;
+
+  function addFieldFilter(f: FieldFilter) {
+    const url = new URL(window.location.href);
+    const raws = url.searchParams.getAll("filter");
+    raws.push(`${f.field}|${f.op}|${f.value}`);
+    url.searchParams.delete("filter");
+    for (const r of raws) url.searchParams.append("filter", r);
+    startTransition(() => {
+      router.push(`${url.pathname}?${url.searchParams.toString()}`);
+      router.refresh();
+    });
+  }
+
+  function removeFieldFilter(idx: number) {
+    const url = new URL(window.location.href);
+    const raws = url.searchParams.getAll("filter");
+    raws.splice(idx, 1);
+    url.searchParams.delete("filter");
+    for (const r of raws) url.searchParams.append("filter", r);
+    startTransition(() => {
+      router.push(`${url.pathname}?${url.searchParams.toString()}`);
+      router.refresh();
+    });
+  }
+
+  function clearAllFilters() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("q");
+    url.searchParams.delete("owner");
+    url.searchParams.delete("tag");
+    url.searchParams.delete("dnc");
+    url.searchParams.delete("filter");
+    startTransition(() => {
+      router.push(`${url.pathname}?${url.searchParams.toString()}`);
+      router.refresh();
+    });
+  }
 
   function onDragStart(leadId: string, fromStage: string) {
     setDragging({ leadId, fromStage });
@@ -362,11 +416,14 @@ export function KanbanBoard({
             <option value="name_asc">Alphabetical</option>
           </select>
         </div>
+        <FieldFilterPopover
+          onAdd={addFieldFilter}
+          customFields={customFields}
+          allStages={allStages}
+        />
         {hasActiveFilters && (
           <button
-            onClick={() =>
-              updateFilter({ q: "", owner: "", tag: "", dnc: false })
-            }
+            onClick={clearAllFilters}
             className="text-[12px] font-bold text-brand-dark-text hover:text-brand-charcoal inline-flex items-center gap-1"
           >
             <X size={12} />
@@ -374,6 +431,26 @@ export function KanbanBoard({
           </button>
         )}
       </div>
+
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {activeFilters.map((f, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-orange/10 text-brand-orange text-[12px] font-bold"
+            >
+              {fieldLabel(f.field, customFields)} {opLabel(f.op)} {f.value || "—"}
+              <button
+                onClick={() => removeFieldFilter(i)}
+                className="hover:text-brand-orange-dark"
+                aria-label="Remove filter"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {stages.length === 0 ? (
         <div className="text-center text-brand-dark-text text-[13px] py-16 border border-dashed border-brand-border rounded-[12px]">
@@ -644,6 +721,188 @@ function renderCardField(
       return `${label}: ${String(value)}`;
     }
   }
+}
+
+const BUILTIN_FILTERABLE_FIELDS = [
+  { key: "name", label: "Name", type: "text" },
+  { key: "phone", label: "Phone", type: "text" },
+  { key: "email", label: "Email", type: "text" },
+  { key: "source", label: "Source", type: "text" },
+  { key: "stage", label: "Stage", type: "stage" },
+  { key: "is_dnc", label: "Do-not-contact", type: "boolean" },
+] as const;
+
+const OPS = [
+  { key: "eq", label: "equals" },
+  { key: "neq", label: "does not equal" },
+  { key: "contains", label: "contains" },
+  { key: "is_empty", label: "is empty" },
+  { key: "is_not_empty", label: "is not empty" },
+] as const;
+
+function fieldLabel(key: string, customFields: CustomFieldRow[]): string {
+  const builtin = BUILTIN_FILTERABLE_FIELDS.find((f) => f.key === key);
+  if (builtin) return builtin.label;
+  if (key.startsWith("custom.")) {
+    const cfKey = key.slice(7);
+    return customFields.find((f) => f.key === cfKey)?.label ?? cfKey;
+  }
+  return key;
+}
+
+function opLabel(op: string): string {
+  return OPS.find((o) => o.key === op)?.label ?? op;
+}
+
+function FieldFilterPopover({
+  onAdd,
+  customFields,
+  allStages,
+}: {
+  onAdd: (f: FieldFilter) => void;
+  customFields: CustomFieldRow[];
+  allStages: LeadStageRow[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [field, setField] = useState<string>("name");
+  const [op, setOp] = useState<string>("contains");
+  const [value, setValue] = useState<string>("");
+
+  const allFields = [
+    ...BUILTIN_FILTERABLE_FIELDS.map((f) => ({
+      key: f.key,
+      label: f.label,
+      type: f.type as string,
+    })),
+    ...customFields.map((f) => ({
+      key: `custom.${f.key}`,
+      label: f.label,
+      type:
+        f.type === "dropdown"
+          ? "dropdown"
+          : f.type === "checkbox"
+            ? "boolean"
+            : "text",
+      options: f.options,
+    })),
+  ];
+  const current = allFields.find((f) => f.key === field);
+  const needsValue = op !== "is_empty" && op !== "is_not_empty";
+
+  return (
+    <div className="relative">
+      <Button variant="outline" size="sm" onClick={() => setOpen((v) => !v)}>
+        + Filter
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-[320px] z-30 bg-white border border-brand-border rounded-[12px] shadow-lg p-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
+                Field
+              </label>
+              <select
+                value={field}
+                onChange={(e) => setField(e.target.value)}
+                className="px-3 py-2 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none appearance-none pr-8"
+              >
+                {allFields.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
+                Condition
+              </label>
+              <select
+                value={op}
+                onChange={(e) => setOp(e.target.value)}
+                className="px-3 py-2 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none appearance-none pr-8"
+              >
+                {OPS.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {needsValue && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
+                  Value
+                </label>
+                {current?.type === "stage" ? (
+                  <select
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    className="px-3 py-2 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none appearance-none pr-8"
+                  >
+                    <option value="">Pick a stage…</option>
+                    {allStages.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : current?.type === "dropdown" && "options" in current ? (
+                  <select
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    className="px-3 py-2 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none appearance-none pr-8"
+                  >
+                    <option value="">—</option>
+                    {(current.options as string[]).map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                ) : current?.type === "boolean" ? (
+                  <select
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    className="px-3 py-2 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none appearance-none pr-8"
+                  >
+                    <option value="">—</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                ) : (
+                  <input
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    className="px-3 py-2 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none"
+                  />
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (needsValue && !value) return;
+                  onAdd({ field, op, value });
+                  setValue("");
+                  setOpen(false);
+                }}
+              >
+                Add filter
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function NewPipelineButton({

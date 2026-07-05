@@ -68,6 +68,9 @@ export async function POST(req: NextRequest) {
       body.call_id ??
       body.unique_id ??
       body.uniqueId ??
+      body.campid ??
+      body.campId ??
+      body.camp_id ??
       "",
   ).trim();
   if (!providerCallId) return Response.json({ ok: true, ignored: true });

@@ -166,9 +166,22 @@ async function twilioSendText(toE164: string, text: string): Promise<string> {
   return payload?.sid ?? "";
 }
 
+// Normalise a phone number to E.164 for Twilio's `whatsapp:` prefix.
+// Handles the common Indian formats users type into the CRM:
+//   +918886956636  →  +918886956636
+//   918886956636   →  +918886956636
+//   08886956636    →  +918886956636 (strips leading 0, adds +91)
+//   8886956636     →  +918886956636 (adds +91)
+// Non-Indian numbers with a country code just get a + prefix.
 function normalizePhone(raw: string): string {
   const trimmed = raw.trim();
-  return trimmed.startsWith("+") ? trimmed : `+${trimmed.replace(/[^\d]/g, "")}`;
+  if (trimmed.startsWith("+")) return trimmed;
+  const digits = trimmed.replace(/[^\d]/g, "");
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) return `+91${digits.slice(1)}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+  if (digits.length === 13 && digits.startsWith("091")) return `+${digits.slice(1)}`;
+  return `+${digits}`;
 }
 
 function resolveVar(lead: LeadRow, path: string): string {
