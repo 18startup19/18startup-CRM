@@ -45,10 +45,9 @@ export function ActiveCallCard({ initial }: Props) {
         setCall(next);
         startedAtRef.current = new Date(next.startedAt).getTime();
       }
-      // Poll faster (1.5s) so the card hides ~2s after CallerDesk's
-      // call_report flips the status. Slower polling made the card linger
-      // after the customer hung up.
-    }, 1500);
+      // Poll every 1s so the card hides within ~1s after CallerDesk's
+      // call_report flips the status.
+    }, 1000);
     return () => clearInterval(id);
   }, [call?.leadId, manuallyClosed]);
 

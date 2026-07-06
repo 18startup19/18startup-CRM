@@ -303,10 +303,10 @@ export function KanbanBoard({
   }
 
   return (
-    <div className="p-6">
-      {/* Sticky top: pipeline row + filter row remain visible while the
-          columns underneath scroll vertically. */}
-      <div className="sticky top-0 z-20 bg-brand-bg pb-3 -mx-6 px-6">
+    <div className="p-6 flex flex-col flex-1 min-h-0 gap-3">
+      {/* Fixed top toolbar area. The lead-card scroll region is the flex-1
+          block below — the toolbar and per-column stage headers stay put. */}
+      <div className="shrink-0">
       <div className="flex items-center gap-3 mb-5">
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-bold uppercase tracking-[0.6px] text-brand-dark-text">
@@ -492,7 +492,7 @@ export function KanbanBoard({
           No stages in this pipeline yet. Add one from Admin → Lead stages.
         </div>
       ) : (
-        <div className="overflow-x-auto pb-24">
+        <div className="flex-1 min-h-0 overflow-auto pb-24">
           <div className="flex gap-3 min-w-max">
             {stages.map((s) => {
               const cards = sortedLeadsByStage[s.id] ?? [];
@@ -509,7 +509,7 @@ export function KanbanBoard({
                   onDragLeave={() => setDropTarget((cur) => (cur === s.id ? null : cur))}
                   onDrop={(e) => onColumnDrop(e, s.id)}
                 >
-                  <div className="sticky top-[76px] z-10 flex items-center gap-2 px-1 py-2 bg-brand-bg -mx-1">
+                  <div className="sticky top-0 z-10 flex items-center gap-2 px-1 py-2 bg-brand-bg -mx-1">
                     <span
                       className="inline-block w-2 h-2 rounded-full shrink-0"
                       style={{ background: s.color }}
@@ -529,7 +529,13 @@ export function KanbanBoard({
                       onChange={() => toggleColumnSelect(s.id)}
                       disabled={cardIds.length === 0}
                       className="cursor-pointer"
-                      title={`Select all in ${s.name}`}
+                      title={
+                        allSelected
+                          ? `Deselect all in ${s.name}`
+                          : someSelected
+                            ? `Add next 20 to selection (${cardIds.filter((id) => selected.has(id)).length}/${cardIds.length} selected)`
+                            : `Select next 20 in ${s.name}`
+                      }
                     />
                   </div>
                   <div

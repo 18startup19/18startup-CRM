@@ -211,8 +211,8 @@ export default async function KanbanPage({ searchParams }: PageProps) {
     .filter((x): x is { field: string; op: string; value: string } => x !== null);
 
   return (
-    <>
-      <div className="px-6 pt-6">
+    <div className="h-full flex flex-col">
+      <div className="px-6 pt-6 shrink-0">
         <GlobalSearch />
       </div>
       <KanbanBoard
@@ -236,6 +236,6 @@ export default async function KanbanPage({ searchParams }: PageProps) {
         tagOptions={tagOptions}
         activeFilters={activeFilters}
       />
-    </>
+    </div>
   );
 }

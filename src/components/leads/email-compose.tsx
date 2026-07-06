@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Mail, X, FileText, Pencil } from "lucide-react";
+import { Mail, X, FileText, Pencil, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select, Textarea } from "@/components/ui/card";
 import { sendEmailAction } from "@/app/actions/comms";
@@ -26,6 +26,7 @@ export function EmailCompose({ lead, templates, onClose }: Props) {
   const [templateId, setTemplateId] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [pending, start] = useTransition();
   const { toast } = useToast();
 
@@ -51,6 +52,7 @@ export function EmailCompose({ lead, templates, onClose }: Props) {
     if (source === "template" && templateId) fd.set("template_id", templateId);
     fd.set("subject", subject);
     fd.set("body_html", body);
+    for (const f of files) fd.append("attachments", f);
     start(async () => {
       try {
         await sendEmailAction(lead.id, fd);
@@ -161,6 +163,40 @@ export function EmailCompose({ lead, templates, onClose }: Props) {
               onChange={(e) => setBody(e.target.value)}
               placeholder="Write your message. Templates support {{name}} / {{email}} / {{phone}}."
             />
+          </div>
+
+          <div>
+            <label
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-[10px] border-[1.5px] border-dashed border-brand-border text-[13px] font-semibold text-brand-charcoal hover:border-brand-orange hover:text-brand-orange cursor-pointer bg-brand-bg transition-colors"
+              title="Attach files to this email"
+            >
+              <Paperclip size={14} />
+              {files.length === 0
+                ? "Attach files"
+                : `${files.length} file${files.length === 1 ? "" : "s"} attached`}
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              />
+            </label>
+            {files.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1">
+                {files.map((f, i) => (
+                  <li key={i} className="flex items-center justify-between text-[12px] text-brand-dark-text bg-white border border-brand-border rounded-[8px] px-2 py-1">
+                    <span className="truncate">{f.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-brand-dark-text hover:text-red-500"
+                    >
+                      <X size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {body && (

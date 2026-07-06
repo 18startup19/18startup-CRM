@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
 import type {
   CommunicationRow,
+  FaqTemplateRow,
   LeadRow,
   WhatsAppTemplateRow,
 } from "@/lib/database.types";
@@ -96,6 +97,14 @@ export default async function WhatsAppPage({ searchParams }: PageProps) {
       sb.from("whatsapp_templates").select("*").eq("is_active", true),
     ]);
 
+  const { data: faqData } = await sb
+    .from("faq_templates")
+    .select("*")
+    .eq("is_archived", false)
+    .or(`owner_id.eq.${session.userId},owner_id.is.null`)
+    .order("title");
+  const faqTemplates = (faqData ?? []) as FaqTemplateRow[];
+
   const latestByLead = new Map<string, CommRow>();
   for (const c of (latestRows ?? []) as CommRow[]) {
     if (!latestByLead.has(c.lead_id)) latestByLead.set(c.lead_id, c);
@@ -186,6 +195,7 @@ export default async function WhatsAppPage({ searchParams }: PageProps) {
         thread={thread}
         lastInboundAt={lastInboundAt}
         templates={(waTemplates ?? []) as WhatsAppTemplateRow[]}
+        faqTemplates={faqTemplates}
       />
     </>
   );

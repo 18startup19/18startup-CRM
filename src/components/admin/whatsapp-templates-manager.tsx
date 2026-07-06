@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { Badge, Card, FieldError, FieldLabel, Input, Select, Textarea } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,7 @@ import {
   submitTemplateToMetaAction,
   syncTemplatesFromTwilioAction,
   toggleWhatsAppTemplateVisibilityAction,
+  updateWhatsAppTemplateAction,
   type TemplateResult,
 } from "@/app/actions/templates";
 import { useToast } from "@/components/ui/toast";
@@ -129,83 +130,7 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
         </div>
 
         {active.map((t) => (
-          <Card key={t.id} className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-brand-charcoal">{t.name}</span>
-                <Badge color={t.template_type === "approved" ? "green" : "blue"}>
-                  {t.template_type === "approved" ? "Meta approved" : "FAQ"}
-                </Badge>
-                {t.approval_status && t.approval_status !== "approved" && (
-                  <Badge
-                    color={
-                      t.approval_status === "pending"
-                        ? "amber"
-                        : t.approval_status === "rejected"
-                          ? "red"
-                          : "slate"
-                    }
-                  >
-                    {t.approval_status}
-                  </Badge>
-                )}
-                <Badge color="slate">{t.language}</Badge>
-                {t.category && <Badge color="orange">{t.category}</Badge>}
-                {!t.is_active && <Badge color="red">Disabled</Badge>}
-              </div>
-              <div className="flex items-center gap-3">
-                <label
-                  className="flex items-center gap-1.5 text-[12px] font-bold text-brand-dark-text cursor-pointer select-none"
-                  title="Uncheck to hide this template from team members"
-                >
-                  <input
-                    type="checkbox"
-                    defaultChecked={t.visible_to_members}
-                    onChange={(e) =>
-                      toggleWhatsAppTemplateVisibilityAction(t.id, e.target.checked)
-                    }
-                  />
-                  Visible to team
-                </label>
-              {t.template_type === "approved" && (
-                <TemplateStatusButtons template={t} />
-              )}
-              {t.is_active && (
-                <form action={disableWhatsAppTemplateAction.bind(null, t.id)}>
-                  <button
-                    type="submit"
-                    className="text-[12px] font-bold text-red-500 hover:text-red-600"
-                  >
-                    Disable
-                  </button>
-                </form>
-              )}
-              </div>
-            </div>
-            {t.provider_content_sid && (
-              <div className="text-[11px] text-brand-dark-text font-mono mt-1">
-                Twilio ContentSid: {t.provider_content_sid}
-              </div>
-            )}
-            {t.submission_error && (
-              <div className="mt-2 rounded-[8px] bg-[#FEECEC] border border-red-200 px-3 py-2 text-[12px] text-red-700">
-                <span className="font-bold">Meta submission error:</span>{" "}
-                {t.submission_error}
-              </div>
-            )}
-            <pre className="text-[13px] text-brand-charcoal bg-brand-bg border border-brand-border rounded-[8px] p-3 whitespace-pre-wrap font-sans">
-              {t.body}
-            </pre>
-            {t.variables.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {t.variables.map((v, i) => (
-                  <code key={i} className="text-[11px] bg-white border border-brand-border rounded px-1.5 py-0.5 font-mono">
-                    {`{{${i + 1}}}`} → {v}
-                  </code>
-                ))}
-              </div>
-            )}
-          </Card>
+          <TemplateCard key={t.id} template={t} />
         ))}
         {active.length === 0 && (
           <Card className="p-8 text-center text-brand-dark-text">
@@ -251,6 +176,157 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
         )}
       </div>
     </div>
+  );
+}
+
+function TemplateCard({ template: t }: { template: WhatsAppTemplateRow }) {
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <Card className="p-5">
+        <form
+          action={async (fd) => {
+            await updateWhatsAppTemplateAction(t.id, fd);
+            setEditing(false);
+          }}
+          className="flex flex-col gap-3"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-[7px]">
+              <FieldLabel>Name</FieldLabel>
+              <Input name="name" defaultValue={t.name} required />
+            </div>
+            <div className="flex flex-col gap-[7px]">
+              <FieldLabel>Language</FieldLabel>
+              <Input name="language" defaultValue={t.language} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-[7px]">
+            <FieldLabel>Category</FieldLabel>
+            <Select name="category" defaultValue={t.category ?? ""}>
+              <option value="">—</option>
+              <option value="UTILITY">Utility</option>
+              <option value="MARKETING">Marketing</option>
+              <option value="AUTHENTICATION">Authentication</option>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-[7px]">
+            <FieldLabel>Body</FieldLabel>
+            <Textarea name="body" rows={5} defaultValue={t.body} required />
+          </div>
+          <div className="flex flex-col gap-[7px]">
+            <FieldLabel>Variables (one per line, in order — mapped to {`{{1}}, {{2}}…`})</FieldLabel>
+            <Textarea
+              name="variables"
+              rows={3}
+              defaultValue={t.variables.join("\n")}
+              placeholder={"name\ncustom.product"}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="text-[13px] font-bold text-brand-dark-text hover:text-brand-charcoal"
+            >
+              Cancel
+            </button>
+            <Button type="submit" size="sm">
+              Save
+            </Button>
+          </div>
+        </form>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold text-brand-charcoal">{t.name}</span>
+          <Badge color={t.template_type === "approved" ? "green" : "blue"}>
+            {t.template_type === "approved" ? "Meta approved" : "FAQ"}
+          </Badge>
+          {t.approval_status && t.approval_status !== "approved" && (
+            <Badge
+              color={
+                t.approval_status === "pending"
+                  ? "amber"
+                  : t.approval_status === "rejected"
+                    ? "red"
+                    : "slate"
+              }
+            >
+              {t.approval_status}
+            </Badge>
+          )}
+          <Badge color="slate">{t.language}</Badge>
+          {t.category && <Badge color="orange">{t.category}</Badge>}
+        </div>
+        <div className="flex items-center gap-3">
+          <label
+            className="flex items-center gap-1.5 text-[12px] font-bold text-brand-dark-text cursor-pointer select-none"
+            title="Uncheck to hide this template from team members"
+          >
+            <input
+              type="checkbox"
+              defaultChecked={t.visible_to_members}
+              onChange={(e) =>
+                toggleWhatsAppTemplateVisibilityAction(t.id, e.target.checked)
+              }
+            />
+            Visible to team
+          </label>
+          {t.template_type === "approved" && (
+            <TemplateStatusButtons template={t} />
+          )}
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-[12px] font-bold text-brand-orange hover:text-brand-orange-dark"
+          >
+            Edit
+          </button>
+          <form action={disableWhatsAppTemplateAction.bind(null, t.id)}>
+            <button
+              type="submit"
+              className="text-[12px] font-bold text-red-500 hover:text-red-600"
+              title="Hide this template — it will be moved to the Disabled section below."
+            >
+              Hide
+            </button>
+          </form>
+        </div>
+      </div>
+      {t.provider_content_sid && (
+        <div className="text-[11px] text-brand-dark-text font-mono mt-1">
+          Twilio ContentSid: {t.provider_content_sid}
+        </div>
+      )}
+      {t.submission_error && (
+        <div className="mt-2 rounded-[8px] bg-[#FEECEC] border border-red-200 px-3 py-2 text-[12px] text-red-700">
+          <span className="font-bold">Meta submission error:</span>{" "}
+          {t.submission_error}
+        </div>
+      )}
+      <pre className="text-[13px] text-brand-charcoal bg-brand-bg border border-brand-border rounded-[8px] p-3 whitespace-pre-wrap font-sans">
+        {t.body}
+      </pre>
+      {t.variables.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {t.variables.map((v, i) => (
+            <code
+              key={i}
+              className="text-[11px] bg-white border border-brand-border rounded px-1.5 py-0.5 font-mono"
+            >
+              {`{{${i + 1}}}`} → {v}
+            </code>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 

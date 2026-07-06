@@ -8,6 +8,15 @@ export default async function FaqPage() {
   const session = await requireSession();
   const sb = supabaseAdmin();
 
+  // Admin-owned FAQs are always shared with the team. Backfill any legacy
+  // rows created before that policy so they show up for members.
+  if (session.role === "admin") {
+    await sb
+      .from("faq_templates")
+      .update({ owner_id: null })
+      .eq("owner_id", session.userId);
+  }
+
   // Show templates the user owns + team-wide shared ones (owner_id is null).
   const { data } = await sb
     .from("faq_templates")

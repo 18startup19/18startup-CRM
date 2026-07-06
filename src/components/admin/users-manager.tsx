@@ -305,12 +305,12 @@ function EditUserModal({
 }
 
 function IncentiveRulesEditor({ rules }: { rules: IncentiveRule[] }) {
-  const [rows, setRows] = useState<IncentiveRule[]>(
-    rules.length > 0 ? rules : [{ from: 0, to: null, percent: 0 }],
-  );
+  const [rows, setRows] = useState<IncentiveRule[]>(rules);
 
   function addRow() {
-    setRows((prev) => [...prev, { from: 0, to: null, percent: 0 }]);
+    const last = rows[rows.length - 1];
+    const nextFrom = last?.to ?? last?.from ?? 0;
+    setRows((prev) => [...prev, { from: nextFrom, to: null, percent: 0 }]);
   }
   function removeRow(i: number) {
     setRows((prev) => prev.filter((_, idx) => idx !== i));
@@ -320,62 +320,82 @@ function IncentiveRulesEditor({ rules }: { rules: IncentiveRule[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-2 border-t border-brand-border pt-4">
+    <div className="flex flex-col gap-3 border-t border-brand-border pt-4">
       <div>
         <FieldLabel>Range-based incentive tiers (optional)</FieldLabel>
         <p className="text-[12px] text-brand-dark-text mt-1">
-          Applied per payment. Leave the To field blank to mean "and above".
-          Tiers override the base % when a payment matches a range.
+          Applied per payment on the amount <b>after excluding 18% GST</b>.
+          Example: 0 → 2,00,000 = 5%, 2,00,000 → 3,00,000 = 7%, 3,00,000 → 4,00,000 = 10%.
+          Leave the <b>Up to</b> field empty to mean &ldquo;and above&rdquo;.
+          If no tier matches, the base % below is used.
         </p>
       </div>
+
+      {rows.length > 0 && (
+        <div className="grid grid-cols-[1fr_1fr_120px_36px] gap-2 items-center text-[11px] font-bold uppercase tracking-[0.4px] text-brand-dark-text px-1">
+          <div>From (₹)</div>
+          <div>Up to (₹)</div>
+          <div>Rate (%)</div>
+          <div />
+        </div>
+      )}
+
       {rows.map((r, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <Input
+        <div key={i} className="grid grid-cols-[1fr_1fr_120px_36px] gap-2 items-center">
+          <input
             name="incentive_from"
             type="number"
+            inputMode="numeric"
             min={0}
-            value={r.from}
+            value={Number.isFinite(r.from) ? r.from : 0}
             onChange={(e) => updateRow(i, { from: Number(e.target.value) })}
-            placeholder="From ₹"
-            className="!py-2 flex-1"
+            placeholder="0"
+            className="px-3 py-2.5 rounded-[10px] border-[1.5px] border-brand-border bg-white text-[14px] text-brand-charcoal outline-none focus:border-brand-orange w-full"
           />
-          <span className="text-brand-dark-text text-[12px]">to</span>
-          <Input
+          <input
             name="incentive_to"
             type="number"
+            inputMode="numeric"
             min={0}
             value={r.to ?? ""}
             onChange={(e) =>
               updateRow(i, { to: e.target.value === "" ? null : Number(e.target.value) })
             }
-            placeholder="∞"
-            className="!py-2 flex-1"
+            placeholder="∞ (blank = no cap)"
+            className="px-3 py-2.5 rounded-[10px] border-[1.5px] border-brand-border bg-white text-[14px] text-brand-charcoal outline-none focus:border-brand-orange w-full"
           />
-          <span className="text-brand-dark-text text-[12px]">=</span>
-          <Input
-            name="incentive_percent_row"
-            type="number"
-            min={0}
-            max={100}
-            step="0.1"
-            value={r.percent}
-            onChange={(e) => updateRow(i, { percent: Number(e.target.value) })}
-            placeholder="%"
-            className="!py-2 w-[80px]"
-          />
+          <div className="relative">
+            <input
+              name="incentive_percent_row"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={100}
+              step="0.1"
+              value={Number.isFinite(r.percent) ? r.percent : 0}
+              onChange={(e) => updateRow(i, { percent: Number(e.target.value) })}
+              placeholder="0"
+              className="pl-3 pr-7 py-2.5 rounded-[10px] border-[1.5px] border-brand-border bg-white text-[14px] text-brand-charcoal outline-none focus:border-brand-orange w-full"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-brand-dark-text font-bold">
+              %
+            </span>
+          </div>
           <button
             type="button"
             onClick={() => removeRow(i)}
-            className="text-[13px] font-bold text-red-500 hover:text-red-600 px-1"
+            title="Remove tier"
+            className="text-[16px] font-bold text-brand-dark-text hover:text-red-500 h-9 flex items-center justify-center rounded-[8px] hover:bg-red-50"
           >
             ×
           </button>
         </div>
       ))}
+
       <button
         type="button"
         onClick={addRow}
-        className="text-[12px] font-bold text-brand-orange hover:text-brand-orange-dark self-start"
+        className="text-[13px] font-bold text-brand-orange hover:text-brand-orange-dark self-start bg-brand-orange/10 px-3 py-2 rounded-[8px]"
       >
         + Add tier
       </button>

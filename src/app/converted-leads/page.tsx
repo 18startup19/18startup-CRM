@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
 import { formatDateTime, incentivePercentForAmount, netAfterGst } from "@/lib/utils";
 import { CallbacksRangePicker } from "@/components/leads/callbacks-range-picker";
+import { ConvertedAmountCell } from "@/components/converted-amount-cell";
 
 type RangeKey =
   | "today"
@@ -274,9 +275,11 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
                       </Link>
                     </Td>
                     <Td className="font-semibold">
-                      <Link href={`/leads/${a.lead_id}`} className="block">
-                        ₹{Number(a.amount).toLocaleString("en-IN")}
-                      </Link>
+                      <ConvertedAmountCell
+                        amountId={a.id}
+                        initialAmount={Number(a.amount)}
+                        initialNote={a.note}
+                      />
                     </Td>
                     <Td className="text-brand-dark-text">
                       <Link href={`/leads/${a.lead_id}`} className="block">

@@ -80,7 +80,7 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen flex bg-brand-bg">
+    <div className="h-screen flex bg-brand-bg overflow-hidden">
       <aside
         className={clsx(
           "shrink-0 bg-brand-charcoal text-white flex flex-col p-3 sidebar-scroll overflow-y-auto transition-[width] duration-200",
@@ -180,7 +180,7 @@ export function AppShell({
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto overflow-x-hidden h-screen">{children}</main>
     </div>
   );
 }

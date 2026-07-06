@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Send, MessageSquare, User, Search } from "lucide-react";
+import { Send, MessageSquare, User, Search, Paperclip } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { sendWhatsAppAction } from "@/app/actions/comms";
@@ -11,6 +11,7 @@ import { formatDateTime, formatRelative } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import type {
   CommunicationRow,
+  FaqTemplateRow,
   LeadRow,
   WhatsAppTemplateRow,
 } from "@/lib/database.types";
@@ -23,6 +24,7 @@ interface Props {
   thread: CommunicationRow[];
   lastInboundAt: string | null;
   templates: WhatsAppTemplateRow[];
+  faqTemplates: FaqTemplateRow[];
 }
 
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
@@ -34,6 +36,7 @@ export function WhatsAppInbox({
   thread,
   lastInboundAt,
   templates,
+  faqTemplates,
 }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -153,6 +156,7 @@ export function WhatsAppInbox({
             insideWindow={insideWindow}
             lastInboundAt={lastInboundAt}
             templates={templates}
+            faqTemplates={faqTemplates}
           />
         )}
       </div>
@@ -167,6 +171,7 @@ function ChatView({
   insideWindow,
   lastInboundAt,
   templates,
+  faqTemplates,
 }: {
   router: ReturnType<typeof useRouter>;
   lead: Pick<LeadRow, "id" | "name" | "phone" | "is_dnc" | "tags">;
@@ -174,6 +179,7 @@ function ChatView({
   insideWindow: boolean;
   lastInboundAt: string | null;
   templates: WhatsAppTemplateRow[];
+  faqTemplates: FaqTemplateRow[];
 }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -183,7 +189,42 @@ function ChatView({
   const [text, setText] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [faqOpen, setFaqOpen] = useState(false);
+  const [faqQuery, setFaqQuery] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const filteredFaqs = faqQuery
+    ? faqTemplates.filter(
+        (f) =>
+          f.title.toLowerCase().includes(faqQuery.toLowerCase()) ||
+          f.body.toLowerCase().includes(faqQuery.toLowerCase()),
+      )
+    : faqTemplates;
+
+  function handleTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value;
+    setText(value);
+    const cursor = e.target.selectionStart;
+    const before = value.slice(0, cursor);
+    const match = before.match(/\/([\w\s]*)$/);
+    if (match) {
+      setFaqOpen(true);
+      setFaqQuery(match[1]);
+    } else {
+      setFaqOpen(false);
+    }
+  }
+
+  function insertFaq(body: string) {
+    const cursor = textareaRef.current?.selectionStart ?? text.length;
+    const before = text.slice(0, cursor).replace(/\/([\w\s]*)$/, "");
+    const after = text.slice(cursor);
+    setText(before + body + after);
+    setFaqOpen(false);
+    setFaqQuery("");
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "auto" });
@@ -305,20 +346,55 @@ function ChatView({
         </div>
         <form onSubmit={handleSend} className="flex items-end gap-2">
           {mode === "text" ? (
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Type a message…"
-              disabled={!insideWindow || pending}
-              rows={2}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
-                }
-              }}
-              className="flex-1 px-3 py-2 rounded-[10px] border-[1.5px] border-brand-border bg-brand-bg text-[14px] outline-none focus:border-brand-orange resize-none disabled:opacity-50"
-            />
+            <div className="flex-1 relative">
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={handleTextChange}
+                placeholder="Type a message… Type / to insert an FAQ."
+                disabled={!insideWindow || pending}
+                rows={2}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape" && faqOpen) {
+                    setFaqOpen(false);
+                    return;
+                  }
+                  if (e.key === "Enter" && !e.shiftKey && !faqOpen) {
+                    e.preventDefault();
+                    (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-[10px] border-[1.5px] border-brand-border bg-brand-bg text-[14px] outline-none focus:border-brand-orange resize-none disabled:opacity-50"
+              />
+              {faqOpen && faqTemplates.length > 0 && (
+                <div className="absolute left-0 right-0 bottom-full mb-1 z-30 bg-white border border-brand-border rounded-[10px] shadow-lg max-h-[220px] overflow-y-auto">
+                  {filteredFaqs.length === 0 ? (
+                    <div className="px-3 py-3 text-[12.5px] text-brand-dark-text">
+                      No FAQs match &ldquo;/{faqQuery}&rdquo;.
+                    </div>
+                  ) : (
+                    filteredFaqs.map((f) => (
+                      <button
+                        type="button"
+                        key={f.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          insertFaq(f.body);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-brand-bg border-b border-brand-border last:border-none"
+                      >
+                        <div className="text-[13px] font-bold text-brand-charcoal">
+                          {f.title}
+                        </div>
+                        <div className="text-[11.5px] text-brand-dark-text line-clamp-2">
+                          {f.body}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex-1 flex flex-col gap-1">
               <select
@@ -351,25 +427,36 @@ function ChatView({
                 })()}
             </div>
           )}
-          <div className="flex flex-col gap-1 items-end">
-            <label className="cursor-pointer text-[11px] font-bold uppercase tracking-[0.5px] text-brand-dark-text hover:text-brand-orange">
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-              />
-              {files.length > 0 ? `${files.length} file${files.length === 1 ? "" : "s"}` : "+ Attach"}
-            </label>
-            <Button type="submit" size="md" disabled={pending}>
-              {pending ? "…" : (
-                <>
-                  <Send size={14} className="inline mr-1 -mt-0.5" />
-                  Send
-                </>
-              )}
-            </Button>
-          </div>
+          <label
+            className={
+              "relative flex items-center justify-center w-10 h-10 rounded-full border border-brand-border cursor-pointer transition-colors " +
+              (files.length > 0
+                ? "bg-brand-orange/10 border-brand-orange text-brand-orange"
+                : "bg-brand-bg text-brand-dark-text hover:bg-brand-orange/10 hover:text-brand-orange hover:border-brand-orange")
+            }
+            title={files.length > 0 ? `${files.length} file${files.length === 1 ? "" : "s"} attached` : "Attach files"}
+          >
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+            />
+            <Paperclip size={16} />
+            {files.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-brand-orange text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                {files.length}
+              </span>
+            )}
+          </label>
+          <Button type="submit" size="md" disabled={pending}>
+            {pending ? "…" : (
+              <>
+                <Send size={14} className="inline mr-1 -mt-0.5" />
+                Send
+              </>
+            )}
+          </Button>
         </form>
       </div>
     </>
