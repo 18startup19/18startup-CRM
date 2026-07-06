@@ -80,20 +80,24 @@ export default async function CallbacksPage({ searchParams }: PageProps) {
   const key: RangeKey = params.range ?? "today";
   const { from, to, label } = computeRange(key, params.from, params.to);
 
+  const nowIso = new Date().toISOString();
+
   const [
     { data: callbacksData },
     { data: callsData },
     { data: usersData },
     { data: notesData },
   ] = await Promise.all([
-    // Callbacks due within the selected range (today by default)
+    // "Upcoming" = every scheduled callback that hasn't happened yet, sorted
+    // by when it's due. The stats range picker only filters call stats + logs;
+    // upcoming callbacks always show every future callback so it isn't lost
+    // just because the user picked "today".
     sb
       .from("leads")
       .select("id,name,phone,next_callback_at,stage_id")
       .eq("owner_id", session.userId)
       .not("next_callback_at", "is", null)
-      .gte("next_callback_at", from.toISOString())
-      .lte("next_callback_at", to.toISOString())
+      .gte("next_callback_at", nowIso)
       .order("next_callback_at", { ascending: true }),
     // ALL call communications by this user in the range
     sb

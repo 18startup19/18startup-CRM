@@ -20,7 +20,23 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
         <h2 className="text-[15px] font-bold text-brand-charcoal mb-4">New template</h2>
         <form action={formAction} className="flex flex-col gap-4">
           <div className="flex flex-col gap-[7px]">
-            <FieldLabel htmlFor="wa-name">Template name (BSP-approved)</FieldLabel>
+            <FieldLabel htmlFor="wa-type">Template type</FieldLabel>
+            <Select id="wa-type" name="template_type" defaultValue="approved">
+              <option value="approved">
+                Approved (Meta-approved — usable for first outreach)
+              </option>
+              <option value="faq">
+                FAQ (24h-window replies only, no Meta approval needed)
+              </option>
+            </Select>
+            <p className="text-[11.5px] text-brand-dark-text">
+              Approved templates go through Meta and can start conversations. FAQ
+              templates are quick replies you send after the customer has
+              messaged you in the last 24 hours.
+            </p>
+          </div>
+          <div className="flex flex-col gap-[7px]">
+            <FieldLabel htmlFor="wa-name">Template name</FieldLabel>
             <Input id="wa-name" name="name" required placeholder="e.g. lead_welcome_v1" />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -66,8 +82,24 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
         {templates.map((t) => (
           <Card key={t.id} className="p-5">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-brand-charcoal">{t.name}</span>
+                <Badge color={t.template_type === "approved" ? "green" : "blue"}>
+                  {t.template_type === "approved" ? "Meta approved" : "FAQ"}
+                </Badge>
+                {t.approval_status && t.approval_status !== "approved" && (
+                  <Badge
+                    color={
+                      t.approval_status === "pending"
+                        ? "amber"
+                        : t.approval_status === "rejected"
+                          ? "red"
+                          : "slate"
+                    }
+                  >
+                    {t.approval_status}
+                  </Badge>
+                )}
                 <Badge color="slate">{t.language}</Badge>
                 {t.category && <Badge color="orange">{t.category}</Badge>}
                 {!t.is_active && <Badge color="red">Disabled</Badge>}

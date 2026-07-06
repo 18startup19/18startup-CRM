@@ -1,55 +1,71 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Phone, PhoneOff, Mail, User } from "lucide-react";
 import { createNoteAction } from "@/app/actions/leads";
+import { fetchActiveCall, type ActiveCall } from "@/app/actions/active-call";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/card";
 
-interface Lead {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
+// Persistent across refresh: the server derives "active call" from
+// communications rows, so re-mounting this component re-fetches state.
+// Auto-dismiss: polls every 4s; when the row's status flips away from
+// "queued" (via CallerDesk webhook), fetchActiveCall returns null and we hide.
+
+interface Props {
+  initial: ActiveCall;
 }
 
-export function ActiveCallCard({
-  lead,
-  onClose,
-}: {
-  lead: Lead;
-  onClose: () => void;
-}) {
+export function ActiveCallCard({ initial }: Props) {
+  const [call, setCall] = useState<ActiveCall | null>(initial);
+  const [manuallyClosed, setManuallyClosed] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [note, setNote] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
   const [pending, start] = useTransition();
   const { toast } = useToast();
+  const startedAtRef = useRef<number>(new Date(initial.startedAt).getTime());
 
+  // Elapsed timer
   useEffect(() => {
-    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
+    }, 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Poll for status flip (CallerDesk webhook → queued goes away)
+  useEffect(() => {
+    if (manuallyClosed) return;
+    const id = setInterval(async () => {
+      const next = await fetchActiveCall();
+      if (!next) {
+        setCall(null);
+      } else if (next.leadId !== call?.leadId) {
+        setCall(next);
+        startedAtRef.current = new Date(next.startedAt).getTime();
+      }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [call?.leadId, manuallyClosed]);
+
+  if (!call || manuallyClosed) return null;
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
   function saveNote() {
     const body = note.trim();
-    if (!body) return;
-    setSavingNote(true);
+    if (!body || !call) return;
     const fd = new FormData();
     fd.set("body", body);
     start(async () => {
       try {
-        await createNoteAction(lead.id, fd);
+        await createNoteAction(call.leadId, fd);
         setNote("");
         toast("Note added.");
       } catch {
         toast("Failed to add note.", "error");
-      } finally {
-        setSavingNote(false);
       }
     });
   }
@@ -68,9 +84,9 @@ export function ActiveCallCard({
           </span>
         </div>
         <button
-          onClick={onClose}
+          onClick={() => setManuallyClosed(true)}
           className="text-white/80 hover:text-white transition-colors"
-          title="End / dismiss"
+          title="Dismiss"
         >
           <PhoneOff size={14} />
         </button>
@@ -83,18 +99,18 @@ export function ActiveCallCard({
           </div>
           <div className="min-w-0 flex-1">
             <div className="font-bold text-brand-charcoal text-[15px] truncate">
-              {lead.name}
+              {call.leadName}
             </div>
-            {lead.phone && (
+            {call.leadPhone && (
               <div className="text-[12.5px] text-brand-dark-text flex items-center gap-1.5 mt-0.5">
                 <Phone size={11} />
-                {lead.phone}
+                {call.leadPhone}
               </div>
             )}
-            {lead.email && (
+            {call.leadEmail && (
               <div className="text-[12.5px] text-brand-dark-text flex items-center gap-1.5">
                 <Mail size={11} />
-                {lead.email}
+                {call.leadEmail}
               </div>
             )}
           </div>
@@ -118,16 +134,16 @@ export function ActiveCallCard({
             variant="ghost"
             size="sm"
             type="button"
-            onClick={onClose}
-            disabled={pending || savingNote}
+            onClick={() => setManuallyClosed(true)}
+            disabled={pending}
           >
-            Close
+            Dismiss
           </Button>
           <Button
             size="sm"
             type="button"
             onClick={saveNote}
-            loading={pending || savingNote}
+            loading={pending}
             disabled={!note.trim()}
           >
             Add note

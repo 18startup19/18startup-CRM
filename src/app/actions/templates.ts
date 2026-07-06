@@ -62,13 +62,25 @@ export async function createWhatsAppTemplateAction(
     .split(/[\n,]/)
     .map((s) => s.trim())
     .filter(Boolean);
+  const templateType = String(form.get("template_type") ?? "approved") as
+    | "approved"
+    | "faq";
+  // Approved templates start life in "pending" — they'd need a Meta submission
+  // via Twilio Content API to move to "approved". FAQ types don't need Meta.
+  const approvalStatus = templateType === "faq" ? "approved" : "pending";
 
   if (!name || !body) return { error: "Template name and body are required." };
 
   const sb = supabaseAdmin();
-  const { error } = await sb
-    .from("whatsapp_templates")
-    .insert({ name, language, category, body, variables });
+  const { error } = await sb.from("whatsapp_templates").insert({
+    name,
+    language,
+    category,
+    body,
+    variables,
+    template_type: templateType,
+    approval_status: approvalStatus,
+  });
   if (error) return { error: error.message };
   revalidatePath("/admin/whatsapp-templates");
   return { ok: true };

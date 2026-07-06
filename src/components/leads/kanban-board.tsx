@@ -296,8 +296,6 @@ export function KanbanBoard({
             variant="outline"
             size="sm"
             onClick={() => setCustomizing((v) => !v)}
-            disabled={!isAdmin}
-            title={isAdmin ? "" : "Only admins can change card fields."}
           >
             Customize card
           </Button>
@@ -340,25 +338,6 @@ export function KanbanBoard({
       </div>
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <div className="relative">
-          <Search
-            size={13}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-brand-dark-text"
-          />
-          <input
-            key={filters.q}
-            defaultValue={filters.q}
-            placeholder="Search name, phone, email"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") updateFilter({ q: e.currentTarget.value.trim() });
-            }}
-            onBlur={(e) => {
-              if (e.currentTarget.value.trim() !== filters.q)
-                updateFilter({ q: e.currentTarget.value.trim() });
-            }}
-            className="pl-7 pr-3 py-1.5 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none focus:border-brand-orange w-[240px]"
-          />
-        </div>
         <select
           value={filters.owner}
           onChange={(e) => updateFilter({ owner: e.target.value })}

@@ -67,6 +67,10 @@ export async function updateUserAction(userId: string, form: FormData): Promise<
   }
 
   const phone = String(form.get("phone") ?? "").trim() || null;
+  const incentivePercentRaw = Number(form.get("incentive_percent") ?? 0);
+  const incentivePercent = Number.isFinite(incentivePercentRaw)
+    ? Math.max(0, Math.min(100, incentivePercentRaw))
+    : 0;
 
   const sb = supabaseAdmin();
   await sb
@@ -78,6 +82,7 @@ export async function updateUserAction(userId: string, form: FormData): Promise<
       permissions,
       pipeline_ids: pipelineIds,
       phone,
+      incentive_percent: incentivePercent,
     })
     .eq("id", userId);
 

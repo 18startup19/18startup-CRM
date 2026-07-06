@@ -36,12 +36,33 @@ export interface UserRow {
   email: string;
   name: string;
   password_hash: string;
-  role: "admin" | "member";
+  role: "admin" | "manager" | "member";
   is_active: boolean;
   permissions: Record<string, boolean>;
   pipeline_ids: string[];
   phone: string | null;
+  incentive_percent: number;
   last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadAmountRow {
+  id: string;
+  lead_id: string;
+  actor_id: string | null;
+  amount: number;
+  note: string | null;
+  created_at: string;
+}
+
+export interface FaqTemplateRow {
+  id: string;
+  owner_id: string | null;
+  title: string;
+  body: string;
+  category: string | null;
+  is_archived: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -156,6 +177,8 @@ export interface WhatsAppTemplateRow {
   body: string;
   variables: string[];
   is_active: boolean;
+  template_type: "approved" | "faq";
+  approval_status: "draft" | "pending" | "approved" | "rejected";
   created_at: string;
 }
 
@@ -202,6 +225,16 @@ export type Database = {
         Row: NotificationRow;
         Insert: Partial<NotificationRow>;
         Update: Partial<NotificationRow>;
+      };
+      lead_amounts: {
+        Row: LeadAmountRow;
+        Insert: Partial<LeadAmountRow>;
+        Update: Partial<LeadAmountRow>;
+      };
+      faq_templates: {
+        Row: FaqTemplateRow;
+        Insert: Partial<FaqTemplateRow>;
+        Update: Partial<FaqTemplateRow>;
       };
       custom_fields: {
         Row: CustomFieldRow;

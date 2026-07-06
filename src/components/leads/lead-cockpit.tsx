@@ -41,7 +41,9 @@ import type { Session } from "@/lib/session-types";
 import { hasPermission } from "@/lib/rbac";
 import { useToast } from "@/components/ui/toast";
 import { TagChipInput } from "@/components/ui/tag-chip-input";
-import { ActiveCallCard } from "@/components/leads/active-call-card";
+import { useRouter } from "next/navigation";
+import { EmailCompose } from "@/components/leads/email-compose";
+import { AddAmountCard } from "@/components/leads/add-amount-card";
 
 const OUTCOME_OPTIONS: {
   value: string;
@@ -70,6 +72,14 @@ interface Props {
   emailTemplates: EmailTemplateRow[];
   whatsappTemplates: WhatsAppTemplateRow[];
   tagSuggestions: string[];
+  lastCallLog: { outcome: string; nextCallbackAt: string | null };
+  amounts: {
+    id: string;
+    amount: number;
+    note: string | null;
+    created_at: string;
+  }[];
+  amountTotal: number;
 }
 
 type TabKey = "timeline" | "notes" | "history";
@@ -87,11 +97,15 @@ export function LeadCockpit({
   emailTemplates,
   whatsappTemplates,
   tagSuggestions,
+  lastCallLog,
+  amounts,
+  amountTotal,
 }: Props) {
   const [pending, start] = useTransition();
+  const router = useRouter();
   const [tab, setTab] = useState<TabKey>("notes");
   const [viewingComm, setViewingComm] = useState<CommunicationRow | null>(null);
-  const [activeCall, setActiveCall] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
   const stage = stages.find((s) => s.id === lead.stage_id);
@@ -143,35 +157,61 @@ export function LeadCockpit({
           </div>
 
           <div className="flex items-center gap-2">
-            {canEmail && lead.email && !lead.is_dnc && (
-              <ComposePopover
-                label="Email"
-                icon={<Mail size={16} className="inline mr-1.5 -mt-0.5" />}
-                templates={emailTemplates.map((t) => ({ id: t.id, name: t.name }))}
-                allowFreeText={false}
-                onSubmit={async (fd) => {
-                  await sendEmailAction(lead.id, fd);
+            {canEmail && (
+              <Button
+                variant="outline"
+                size="md"
+                type="button"
+                onClick={() => {
+                  if (lead.is_dnc) {
+                    toast("Lead is marked DNC.", "error");
+                    return;
+                  }
+                  if (!lead.email) {
+                    toast("Add an email to Details first.", "error");
+                    return;
+                  }
+                  setEmailOpen(true);
                 }}
-              />
+                className={lead.is_dnc || !lead.email ? "opacity-60" : ""}
+              >
+                <Mail size={16} className="inline mr-1.5 -mt-0.5" />
+                Email
+              </Button>
             )}
-            {canWA && lead.phone && !lead.is_dnc && (
+            {canWA && (
               <ComposePopover
                 label="WhatsApp"
                 icon={<MessageSquare size={16} className="inline mr-1.5 -mt-0.5" />}
                 templates={whatsappTemplates.map((t) => ({ id: t.id, name: t.name }))}
                 allowFreeText
-                freeTextHint="Free-form text works within the 24h session window."
+                freeTextHint="Free text works within the 24h session window."
+                disabledReason={
+                  lead.is_dnc
+                    ? "Lead is marked DNC."
+                    : !lead.phone
+                      ? "Add a phone to Details first."
+                      : ""
+                }
                 onSubmit={async (fd) => {
                   await sendWhatsAppAction(lead.id, fd);
                 }}
               />
             )}
-            {canCall && lead.phone && !lead.is_dnc && (
+            {canCall && (
               <form
                 action={async (fd) => {
+                  if (!lead.phone) {
+                    toast("Add a phone to Details first.", "error");
+                    return;
+                  }
+                  if (lead.is_dnc) {
+                    toast("Lead is marked DNC.", "error");
+                    return;
+                  }
                   const res = await callAction(lead.id, fd);
                   if (res?.error) toast(res.error, "error");
-                  else setActiveCall(true);
+                  else router.refresh();
                 }}
               >
                 <input type="hidden" name="agent_phone" value="" />
@@ -189,11 +229,11 @@ export function LeadCockpit({
         {/* LEFT: single card with all tabs at the top */}
         <Card className="p-0 overflow-hidden">
           <div className="flex border-b border-brand-border overflow-x-auto">
-            <TabButton active={tab === "timeline"} onClick={() => setTab("timeline")}>
-              Communications
-            </TabButton>
             <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>
               Notes ({notes.length})
+            </TabButton>
+            <TabButton active={tab === "timeline"} onClick={() => setTab("timeline")}>
+              Communications
             </TabButton>
             <TabButton active={tab === "history"} onClick={() => setTab("history")}>
               History
@@ -232,48 +272,8 @@ export function LeadCockpit({
 
           {tab === "notes" && (
             <div className="p-6 flex flex-col gap-6">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[13px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
-                    Log a call
-                  </h3>
-                  <span className="text-[11px] text-brand-dark-text">
-                    Capture outcome after a call.
-                  </span>
-                </div>
-                <form
-                  action={async (fd) => {
-                    await logCallOutcomeAction(lead.id, fd);
-                  }}
-                  className="flex flex-col gap-3"
-                >
-                  <div className="flex flex-col gap-[7px]">
-                    <FieldLabel>Outcome</FieldLabel>
-                    <div className="grid grid-cols-4 gap-2">
-                      {OUTCOME_OPTIONS.map((o) => (
-                        <label
-                          key={o.value}
-                          className="flex items-center gap-2 px-3 py-2 rounded-[10px] border border-brand-border bg-brand-bg cursor-pointer hover:border-brand-orange transition-colors has-[:checked]:border-brand-orange has-[:checked]:bg-[#FFF4EF]"
-                        >
-                          <input type="radio" name="outcome" value={o.value} required />
-                          <span className="text-[12.5px] font-semibold text-brand-charcoal">
-                            {o.label}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-[7px]">
-                    <FieldLabel htmlFor="lc-callback">Callback at (optional)</FieldLabel>
-                    <Input id="lc-callback" name="next_callback_at" type="datetime-local" />
-                  </div>
-                  <div className="flex justify-end">
-                    <Button type="submit" size="sm">
-                      <Save size={14} className="inline mr-1.5 -mt-0.5" /> Save outcome
-                    </Button>
-                  </div>
-                </form>
-              </div>
+              <LogCallForm leadId={lead.id} lastCallLog={lastCallLog} />
+
 
               <div className="border-t border-brand-border pt-5">
                 <h3 className="text-[13px] font-bold uppercase tracking-[0.5px] text-brand-dark-text mb-3">
@@ -374,6 +374,8 @@ export function LeadCockpit({
               </div>
             )}
           </Card>
+
+          <AddAmountCard leadId={lead.id} total={amountTotal} entries={amounts} />
 
           <Card className="p-6">
             <form
@@ -480,15 +482,17 @@ export function LeadCockpit({
         </div>
       </div>
 
-      {activeCall && (
-        <ActiveCallCard
+      {emailOpen && (
+        <EmailCompose
           lead={{
             id: lead.id,
             name: lead.name,
-            phone: lead.phone,
             email: lead.email,
+            phone: lead.phone,
+            custom: lead.custom,
           }}
-          onClose={() => setActiveCall(false)}
+          templates={emailTemplates}
+          onClose={() => setEmailOpen(false)}
         />
       )}
     </div>
@@ -734,6 +738,97 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
+function LogCallForm({
+  leadId,
+  lastCallLog,
+}: {
+  leadId: string;
+  lastCallLog: { outcome: string; nextCallbackAt: string | null };
+}) {
+  const [outcome, setOutcome] = useState(lastCallLog.outcome);
+  const [callbackAt, setCallbackAt] = useState(() =>
+    lastCallLog.nextCallbackAt
+      ? new Date(lastCallLog.nextCallbackAt).toISOString().slice(0, 16)
+      : "",
+  );
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleSave(nextOutcome: string, nextCallback: string) {
+    if (!nextOutcome) return;
+    if (timer.current) clearTimeout(timer.current);
+    setStatus("saving");
+    timer.current = setTimeout(async () => {
+      const fd = new FormData();
+      fd.set("outcome", nextOutcome);
+      if (nextCallback) fd.set("next_callback_at", nextCallback);
+      try {
+        await logCallOutcomeAction(leadId, fd);
+        setStatus("saved");
+        setTimeout(() => setStatus("idle"), 1500);
+      } catch {
+        setStatus("idle");
+      }
+    }, 700);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-[13px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
+          Log a call
+        </h3>
+        <span className="text-[11px] text-brand-dark-text">
+          {status === "saving"
+            ? "Saving…"
+            : status === "saved"
+              ? "Saved ✓"
+              : "Auto-saves on change."}
+        </span>
+      </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-[7px]">
+          <FieldLabel>Outcome</FieldLabel>
+          <div className="grid grid-cols-4 gap-2">
+            {OUTCOME_OPTIONS.map((o) => (
+              <label
+                key={o.value}
+                className="flex items-center gap-2 px-3 py-2 rounded-[10px] border border-brand-border bg-brand-bg cursor-pointer hover:border-brand-orange transition-colors has-[:checked]:border-brand-orange has-[:checked]:bg-[#FFF4EF]"
+              >
+                <input
+                  type="radio"
+                  name="outcome"
+                  value={o.value}
+                  checked={outcome === o.value}
+                  onChange={() => {
+                    setOutcome(o.value);
+                    scheduleSave(o.value, callbackAt);
+                  }}
+                />
+                <span className="text-[12.5px] font-semibold text-brand-charcoal">
+                  {o.label}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-[7px]">
+          <FieldLabel htmlFor="lc-callback">Callback at (optional)</FieldLabel>
+          <Input
+            id="lc-callback"
+            type="datetime-local"
+            value={callbackAt}
+            onChange={(e) => {
+              setCallbackAt(e.target.value);
+              scheduleSave(outcome, e.target.value);
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AutoSaveIndicator() {
   // Renders "Saving…" while the parent form's server action is pending.
   // Rendered inside the Details form so useFormStatus() picks up the state.
@@ -757,6 +852,7 @@ function ComposePopover({
   templates,
   allowFreeText,
   freeTextHint,
+  disabledReason,
   onSubmit,
 }: {
   label: string;
@@ -764,13 +860,16 @@ function ComposePopover({
   templates: { id: string; name: string }[];
   allowFreeText: boolean;
   freeTextHint?: string;
+  disabledReason?: string;
   onSubmit: (fd: FormData) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
+  const { toast } = useToast();
   const [mode, setMode] = useState<"template" | "text">(
     templates.length > 0 ? "template" : "text",
   );
+  const isDisabled = Boolean(disabledReason);
 
   return (
     <div className="relative">
@@ -778,7 +877,15 @@ function ComposePopover({
         variant="outline"
         size="md"
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (isDisabled) {
+            toast(disabledReason!, "error");
+            return;
+          }
+          setOpen((v) => !v);
+        }}
+        title={disabledReason || ""}
+        className={isDisabled ? "opacity-60" : ""}
       >
         {icon}
         {label}

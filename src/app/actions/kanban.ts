@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdmin, requireSession } from "@/lib/rbac-server";
+import { requireSession } from "@/lib/rbac-server";
 import { hasPermission } from "@/lib/rbac";
 import { runWorkflows } from "@/lib/workflows";
 import type { LeadRow } from "@/lib/database.types";
@@ -163,7 +163,10 @@ export async function moveLeadStageAction(leadId: string, stageId: string): Prom
 }
 
 export async function saveKanbanCardFieldsAction(fields: string[]): Promise<void> {
-  await requireAdmin();
+  // Team members can tune their kanban card view too. This setting is global
+  // for now (single integration_settings row) — a per-user override would need
+  // its own table.
+  await requireSession();
   const sb = supabaseAdmin();
 
   const { data: row } = await sb

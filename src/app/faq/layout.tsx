@@ -3,7 +3,7 @@ import { NotificationsBridge } from "@/components/notifications-bridge";
 import { ActiveCallMount } from "@/components/leads/active-call-mount";
 import { requireSession } from "@/lib/rbac-server";
 
-export default async function LeadsLayout({ children }: { children: React.ReactNode }) {
+export default async function FaqLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
   return (
     <AppShell session={session} section="leads">

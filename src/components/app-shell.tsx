@@ -18,6 +18,8 @@ import {
   Workflow,
   ChevronLeft,
   ChevronRight,
+  IndianRupee,
+  HelpCircle,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { logoutAction } from "@/app/actions/auth";
@@ -30,9 +32,12 @@ interface NavItem {
 }
 
 const memberNav: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/leads/kanban", label: "Kanban", icon: Layers },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/leads/callbacks", label: "My Callbacks", icon: ListChecks },
+  { href: "/converted-leads", label: "Converted leads", icon: IndianRupee },
+  { href: "/faq", label: "FAQ templates", icon: HelpCircle },
 ];
 
 const adminNav: NavItem[] = [

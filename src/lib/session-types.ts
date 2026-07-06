@@ -5,5 +5,5 @@ export interface Session {
   userId: string;
   email: string;
   name: string;
-  role: "admin" | "member";
+  role: "admin" | "manager" | "member";
 }

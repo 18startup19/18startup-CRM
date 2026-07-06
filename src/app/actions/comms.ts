@@ -11,17 +11,34 @@ import { initiateCall } from "@/lib/integrations/telephony";
 export async function sendEmailAction(leadId: string, form: FormData): Promise<void> {
   const session = await requireSession();
   const templateId = String(form.get("template_id") ?? "");
-  if (!templateId) return;
+  const subjectOverride = String(form.get("subject") ?? "").trim();
+  const bodyOverride = String(form.get("body_html") ?? "").trim();
   const sb = supabaseAdmin();
-  const [{ data: lead }, { data: tpl }] = await Promise.all([
-    sb.from("leads").select("*").eq("id", leadId).single(),
-    sb.from("email_templates").select("*").eq("id", templateId).single(),
-  ]);
-  if (!lead || !tpl) return;
+  const { data: lead } = await sb.from("leads").select("*").eq("id", leadId).single();
+  if (!lead) return;
+
+  let subject = subjectOverride;
+  let bodyHtml = bodyOverride;
+
+  // If a template was picked but the user didn't edit subject/body, load
+  // them from the template. Overrides always win.
+  if (templateId && (!subject || !bodyHtml)) {
+    const { data: tpl } = await sb
+      .from("email_templates")
+      .select("*")
+      .eq("id", templateId)
+      .single();
+    if (tpl) {
+      subject = subject || (tpl as EmailTemplateRow).subject;
+      bodyHtml = bodyHtml || (tpl as EmailTemplateRow).body_html;
+    }
+  }
+
+  if (!subject || !bodyHtml) return;
   await sendEmail({
     lead: lead as LeadRow,
-    subject: (tpl as EmailTemplateRow).subject,
-    bodyHtml: (tpl as EmailTemplateRow).body_html,
+    subject,
+    bodyHtml,
     actorId: session.userId,
   });
   revalidatePath(`/leads/${leadId}`);

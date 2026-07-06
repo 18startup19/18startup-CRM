@@ -6,6 +6,7 @@ import type {
   CustomFieldRow,
   LeadNoteRow,
   LeadActivityRow,
+  LeadAmountRow,
   LeadRow,
   LeadStageRow,
   CommunicationRow,
@@ -44,6 +45,35 @@ export default async function LeadDetailPage({ params }: Params) {
   }
   const tagSuggestions = Array.from(tagSuggestionSet).sort();
 
+  const { data: amountsData } = await sb
+    .from("lead_amounts")
+    .select("id,amount,note,created_at")
+    .eq("lead_id", id)
+    .order("created_at", { ascending: false });
+  const amounts = (amountsData ?? []) as Pick<
+    LeadAmountRow,
+    "id" | "amount" | "note" | "created_at"
+  >[];
+  const amountTotal = amounts.reduce((sum, a) => sum + Number(a.amount), 0);
+
+  // Most recent call outcome for this lead — used to prefill the log-call form.
+  const { data: lastCallLogRow } = await sb
+    .from("communications")
+    .select("outcome,body")
+    .eq("lead_id", id)
+    .eq("channel", "call")
+    .not("outcome", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ outcome: string | null; body: string | null }>();
+  const lastCallLog = {
+    outcome: lastCallLogRow?.outcome ?? "",
+    nextCallbackAt: leadRes.data
+      ? ((leadRes.data as { next_callback_at: string | null }).next_callback_at ??
+        null)
+      : null,
+  };
+
   const lead = leadRes.data as LeadRow | null;
   if (!lead) notFound();
 
@@ -67,6 +97,14 @@ export default async function LeadDetailPage({ params }: Params) {
       emailTemplates={(emailTplRes.data ?? []) as EmailTemplateRow[]}
       whatsappTemplates={(waTplRes.data ?? []) as WhatsAppTemplateRow[]}
       tagSuggestions={tagSuggestions}
+      lastCallLog={lastCallLog}
+      amounts={amounts.map((a) => ({
+        id: a.id,
+        amount: Number(a.amount),
+        note: a.note,
+        created_at: a.created_at,
+      }))}
+      amountTotal={amountTotal}
     />
   );
 }

@@ -47,6 +47,7 @@ export function UsersManager({
             <FieldLabel htmlFor="role">Role</FieldLabel>
             <Select id="role" name="role" defaultValue="member">
               <option value="member">Team member</option>
+              <option value="manager">Manager</option>
               <option value="admin">Admin</option>
             </Select>
           </div>
@@ -198,6 +199,7 @@ function EditUserModal({
             <FieldLabel htmlFor="e-role">Role</FieldLabel>
             <Select id="e-role" name="role" defaultValue={user.role}>
               <option value="member">Team member</option>
+              <option value="manager">Manager</option>
               <option value="admin">Admin</option>
             </Select>
           </div>
@@ -205,6 +207,23 @@ function EditUserModal({
             <input type="checkbox" name="is_active" defaultChecked={user.is_active} />
             Active
           </label>
+
+          <div className="flex flex-col gap-[7px]">
+            <FieldLabel htmlFor="e-incentive">Incentive (%)</FieldLabel>
+            <p className="text-[12px] text-brand-dark-text">
+              % of every converted-lead amount this member takes home. Applied
+              on the Converted-leads dashboard.
+            </p>
+            <Input
+              id="e-incentive"
+              name="incentive_percent"
+              type="number"
+              min={0}
+              max={100}
+              step="0.1"
+              defaultValue={String(user.incentive_percent ?? 0)}
+            />
+          </div>
 
           <div className="border-t border-brand-border pt-4 mt-2">
             <FieldLabel>Pipeline access (members only)</FieldLabel>
