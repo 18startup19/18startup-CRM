@@ -41,6 +41,26 @@ body {
   font-family: var(--font-lato), "Poppins", sans-serif;
 }
 
+/* Smoother scrolling everywhere */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Tune focus rings to the brand */
+*:focus {
+  outline: none;
+}
+
+button, a, input, select, textarea {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+button:not(:disabled):active {
+  transform: translateY(0);
+}
+
 .sidebar-scroll::-webkit-scrollbar {
   width: 6px;
 }
@@ -55,4 +75,28 @@ body {
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 180ms ease-out;
 }

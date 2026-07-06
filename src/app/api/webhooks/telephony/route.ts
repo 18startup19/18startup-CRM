@@ -21,10 +21,24 @@ export async function POST(req: NextRequest) {
   let body: Record<string, unknown> = {};
   if (ct.includes("application/json")) {
     body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  } else {
+  } else if (ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data")) {
     const fd = await req.formData().catch(() => null);
     if (fd) fd.forEach((v, k) => (body[k] = String(v)));
+  } else {
+    // Fall back to parsing URL query string (some providers POST empty body
+    // and put everything in the query, or GET the webhook).
+    const search = req.nextUrl.searchParams;
+    search.forEach((v, k) => (body[k] = v));
+    // Also try JSON as last resort
+    if (Object.keys(body).length === 0) {
+      body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    }
   }
+
+  // Log the raw payload so we can see exactly what CallerDesk sends. Shows up
+  // in Vercel → Logs. Remove once the field mapping stabilises.
+  // eslint-disable-next-line no-console
+  console.log("[telephony-webhook] payload:", JSON.stringify(body));
 
   const rawEvent = String(body.event ?? body.type ?? body.EventType ?? "").toLowerCase();
   const rawStatus = String(
@@ -75,19 +89,31 @@ export async function POST(req: NextRequest) {
   ).trim();
   if (!providerCallId) return Response.json({ ok: true, ignored: true });
 
-  const duration =
-    body.DialCallDuration != null
-      ? Number(body.DialCallDuration)
-      : body.duration != null
-        ? Number(body.duration)
-        : body.call_duration != null
-          ? Number(body.call_duration)
-          : null;
+  const durationCandidates = [
+    body.DialCallDuration,
+    body.duration,
+    body.call_duration,
+    body.callDuration,
+    body.CallDuration,
+    body.talktime,
+    body.talkTime,
+    body.total_duration,
+    body.totalDuration,
+    body.answered_duration,
+  ];
+  const durationRaw = durationCandidates.find((v) => v != null && v !== "");
+  const duration = durationRaw != null ? Number(durationRaw) : null;
 
   const recordingUrl =
     (body.RecordingUrl as string | undefined) ??
     (body.recording_url as string | undefined) ??
     (body.recordingUrl as string | undefined) ??
+    (body.recording as string | undefined) ??
+    (body.recording_link as string | undefined) ??
+    (body.recordingLink as string | undefined) ??
+    (body.recording_file as string | undefined) ??
+    (body.call_recording as string | undefined) ??
+    (body.callrecording as string | undefined) ??
     null;
 
   const normalizedStatus =

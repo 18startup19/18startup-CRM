@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { useFormStatus } from "react-dom";
 import {
   Phone,
   Mail,
@@ -40,6 +41,7 @@ import type { Session } from "@/lib/session-types";
 import { hasPermission } from "@/lib/rbac";
 import { useToast } from "@/components/ui/toast";
 import { TagChipInput } from "@/components/ui/tag-chip-input";
+import { ActiveCallCard } from "@/components/leads/active-call-card";
 
 const OUTCOME_OPTIONS: {
   value: string;
@@ -87,8 +89,10 @@ export function LeadCockpit({
   tagSuggestions,
 }: Props) {
   const [pending, start] = useTransition();
-  const [tab, setTab] = useState<TabKey>("timeline");
+  const [tab, setTab] = useState<TabKey>("notes");
   const [viewingComm, setViewingComm] = useState<CommunicationRow | null>(null);
+  const [activeCall, setActiveCall] = useState(false);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
   const stage = stages.find((s) => s.id === lead.stage_id);
   const owner = users.find((u) => u.id === lead.owner_id);
@@ -167,11 +171,11 @@ export function LeadCockpit({
                 action={async (fd) => {
                   const res = await callAction(lead.id, fd);
                   if (res?.error) toast(res.error, "error");
-                  else toast("Call initiated — your phone will ring shortly.");
+                  else setActiveCall(true);
                 }}
               >
                 <input type="hidden" name="agent_phone" value="" />
-                <Button size="lg" className="!px-6">
+                <Button size="lg" className="!px-6" type="submit">
                   <Phone size={18} className="inline mr-2 -mt-0.5" />
                   Call
                 </Button>
@@ -228,21 +232,7 @@ export function LeadCockpit({
 
           {tab === "notes" && (
             <div className="p-6 flex flex-col gap-6">
-              <form
-                action={async (fd) => {
-                  await createNoteAction(lead.id, fd);
-                }}
-                className="flex flex-col gap-3"
-              >
-                <Textarea name="body" placeholder="Add a note…" rows={3} required />
-                <div className="flex justify-end">
-                  <Button type="submit" size="sm">
-                    Add note
-                  </Button>
-                </div>
-              </form>
-
-              <div className="border-t border-brand-border pt-5">
+              <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-[13px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
                     Log a call
@@ -277,13 +267,28 @@ export function LeadCockpit({
                     <FieldLabel htmlFor="lc-callback">Callback at (optional)</FieldLabel>
                     <Input id="lc-callback" name="next_callback_at" type="datetime-local" />
                   </div>
-                  <div className="flex flex-col gap-[7px]">
-                    <FieldLabel htmlFor="lc-summary">Summary</FieldLabel>
-                    <Textarea id="lc-summary" name="summary" rows={2} placeholder="What did they say?" />
-                  </div>
                   <div className="flex justify-end">
                     <Button type="submit" size="sm">
                       <Save size={14} className="inline mr-1.5 -mt-0.5" /> Save outcome
+                    </Button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="border-t border-brand-border pt-5">
+                <h3 className="text-[13px] font-bold uppercase tracking-[0.5px] text-brand-dark-text mb-3">
+                  Add a note
+                </h3>
+                <form
+                  action={async (fd) => {
+                    await createNoteAction(lead.id, fd);
+                  }}
+                  className="flex flex-col gap-3"
+                >
+                  <Textarea name="body" placeholder="Type a note…" rows={3} required />
+                  <div className="flex justify-end">
+                    <Button type="submit" size="sm">
+                      Add note
                     </Button>
                   </div>
                 </form>
@@ -371,19 +376,29 @@ export function LeadCockpit({
           </Card>
 
           <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[15px] font-bold text-brand-charcoal">Details</h2>
-              <span className="text-[11px] text-brand-dark-text">
-                Created {formatRelative(lead.created_at)}
-              </span>
-            </div>
             <form
               action={async (fd) => {
                 const res = await updateLeadAction(lead.id, fd);
                 if (res && "ok" in res) toast("Changes saved.");
               }}
+              onChange={(e) => {
+                const form = e.currentTarget;
+                if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+                autoSaveTimer.current = setTimeout(() => {
+                  form.requestSubmit();
+                }, 900);
+              }}
               className="flex flex-col gap-4"
             >
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-[15px] font-bold text-brand-charcoal">Details</h2>
+                <div className="flex items-center gap-2">
+                  <AutoSaveIndicator />
+                  <span className="text-[11px] text-brand-dark-text">
+                    Created {formatRelative(lead.created_at)}
+                  </span>
+                </div>
+              </div>
               <div className="flex flex-col gap-[7px]">
                 <FieldLabel htmlFor="d-name">Name</FieldLabel>
                 <Input id="d-name" name="name" defaultValue={lead.name} required />
@@ -464,6 +479,18 @@ export function LeadCockpit({
           )}
         </div>
       </div>
+
+      {activeCall && (
+        <ActiveCallCard
+          lead={{
+            id: lead.id,
+            name: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+          }}
+          onClose={() => setActiveCall(false)}
+        />
+      )}
     </div>
   );
 }
@@ -704,6 +731,23 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
       </span>
       <span className="text-brand-charcoal">{value}</span>
     </div>
+  );
+}
+
+function AutoSaveIndicator() {
+  // Renders "Saving…" while the parent form's server action is pending.
+  // Rendered inside the Details form so useFormStatus() picks up the state.
+  let pending = false;
+  try {
+    pending = useFormStatus().pending;
+  } catch {
+    /* not in a form */
+  }
+  if (!pending) return null;
+  return (
+    <span className="text-[11px] font-bold uppercase tracking-[0.5px] text-brand-orange animate-pulse">
+      Saving…
+    </span>
   );
 }
 

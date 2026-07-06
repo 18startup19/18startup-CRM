@@ -123,10 +123,8 @@ export function KanbanBoard({
     } else if (patch.sort === "updated_desc") {
       url.searchParams.delete("sort");
     }
-    startTransition(() => {
-      router.push(`${url.pathname}?${url.searchParams.toString()}`);
-      router.refresh();
-    });
+    router.replace(`${url.pathname}?${url.searchParams.toString()}`);
+    router.refresh();
   }
 
   const hasActiveFilters =
@@ -142,10 +140,8 @@ export function KanbanBoard({
     raws.push(`${f.field}|${f.op}|${f.value}`);
     url.searchParams.delete("filter");
     for (const r of raws) url.searchParams.append("filter", r);
-    startTransition(() => {
-      router.push(`${url.pathname}?${url.searchParams.toString()}`);
-      router.refresh();
-    });
+    router.replace(`${url.pathname}?${url.searchParams.toString()}`);
+    router.refresh();
   }
 
   function removeFieldFilter(idx: number) {
@@ -154,10 +150,8 @@ export function KanbanBoard({
     raws.splice(idx, 1);
     url.searchParams.delete("filter");
     for (const r of raws) url.searchParams.append("filter", r);
-    startTransition(() => {
-      router.push(`${url.pathname}?${url.searchParams.toString()}`);
-      router.refresh();
-    });
+    router.replace(`${url.pathname}?${url.searchParams.toString()}`);
+    router.refresh();
   }
 
   function clearAllFilters() {
@@ -167,10 +161,8 @@ export function KanbanBoard({
     url.searchParams.delete("tag");
     url.searchParams.delete("dnc");
     url.searchParams.delete("filter");
-    startTransition(() => {
-      router.push(`${url.pathname}?${url.searchParams.toString()}`);
-      router.refresh();
-    });
+    router.replace(`${url.pathname}?${url.searchParams.toString()}`);
+    router.refresh();
   }
 
   function onDragStart(leadId: string, fromStage: string) {
