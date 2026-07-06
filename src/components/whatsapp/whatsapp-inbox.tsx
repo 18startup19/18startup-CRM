@@ -41,7 +41,10 @@ export function WhatsAppInbox({
   // Poll the server for new inbound messages every 5 seconds. router.refresh()
   // re-renders the server component in place — much cheaper than a full nav.
   useEffect(() => {
-    const id = setInterval(() => router.refresh(), 5000);
+    // 8s polling instead of 5s — cheaper on the server and still feels
+    // real-time enough for a CRM inbox. Focus event still triggers instant
+    // refresh when the user comes back to the tab.
+    const id = setInterval(() => router.refresh(), 8000);
     const onFocus = () => router.refresh();
     window.addEventListener("focus", onFocus);
     return () => {

@@ -13,6 +13,7 @@ import type {
   UserRow,
   EmailTemplateRow,
   WhatsAppTemplateRow,
+  FaqTemplateRow,
 } from "@/lib/database.types";
 
 interface Params {
@@ -24,8 +25,20 @@ export default async function LeadDetailPage({ params }: Params) {
   const { id } = await params;
   const sb = supabaseAdmin();
 
-  const [leadRes, stagesRes, fieldsRes, usersRes, notesRes, actsRes, commsRes, emailTplRes, waTplRes, meRes, tagRes] =
-    await Promise.all([
+  const [
+    leadRes,
+    stagesRes,
+    fieldsRes,
+    usersRes,
+    notesRes,
+    actsRes,
+    commsRes,
+    emailTplRes,
+    waTplRes,
+    meRes,
+    tagRes,
+    faqRes,
+  ] = await Promise.all([
       sb.from("leads").select("*").eq("id", id).maybeSingle(),
       sb.from("lead_stages").select("*").eq("is_archived", false).order("position"),
       sb.from("custom_fields").select("*").eq("is_archived", false).order("position"),
@@ -33,10 +46,32 @@ export default async function LeadDetailPage({ params }: Params) {
       sb.from("lead_notes").select("*").eq("lead_id", id).order("created_at", { ascending: false }),
       sb.from("lead_activities").select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100),
       sb.from("communications").select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100),
-      sb.from("email_templates").select("*").eq("is_archived", false).order("name"),
-      sb.from("whatsapp_templates").select("*").eq("is_active", true).order("name"),
+      // Non-admin members only see templates the admin has marked visible.
+      session.role === "admin"
+        ? sb.from("email_templates").select("*").eq("is_archived", false).order("name")
+        : sb
+            .from("email_templates")
+            .select("*")
+            .eq("is_archived", false)
+            .eq("visible_to_members", true)
+            .order("name"),
+      session.role === "admin"
+        ? sb.from("whatsapp_templates").select("*").eq("is_active", true).order("name")
+        : sb
+            .from("whatsapp_templates")
+            .select("*")
+            .eq("is_active", true)
+            .eq("visible_to_members", true)
+            .order("name"),
       sb.from("users").select("permissions").eq("id", session.userId).maybeSingle(),
       sb.from("leads").select("tags").limit(5000),
+      // FAQ templates available to this user (their own + team-shared).
+      sb
+        .from("faq_templates")
+        .select("*")
+        .eq("is_archived", false)
+        .or(`owner_id.eq.${session.userId},owner_id.is.null`)
+        .order("title"),
     ]);
 
   const tagSuggestionSet = new Set<string>();
@@ -96,6 +131,7 @@ export default async function LeadDetailPage({ params }: Params) {
       communications={(commsRes.data ?? []) as CommunicationRow[]}
       emailTemplates={(emailTplRes.data ?? []) as EmailTemplateRow[]}
       whatsappTemplates={(waTplRes.data ?? []) as WhatsAppTemplateRow[]}
+      faqTemplates={(faqRes.data ?? []) as FaqTemplateRow[]}
       tagSuggestions={tagSuggestions}
       lastCallLog={lastCallLog}
       amounts={amounts.map((a) => ({

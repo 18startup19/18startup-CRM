@@ -1,9 +1,10 @@
-import { Phone, Clock, IndianRupee, Sparkles, Trophy, UserPlus, Users } from "lucide-react";
+import { Phone, Clock, IndianRupee, Sparkles, Trophy, UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
 import { CallbacksRangePicker } from "@/components/leads/callbacks-range-picker";
+import { incentivePercentForAmount } from "@/lib/utils";
 
 type RangeKey =
   | "today"
@@ -217,13 +218,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             label="Leads assigned to me"
             value={String(assignedTodayCount)}
           />
-          <StatCard
-            icon={<Users size={14} />}
-            label="Incentive rate"
-            value={`${ratePct}%`}
-            hint="Set by admin in Users."
-          />
         </div>
+
+        {(session.role === "manager" || session.role === "admin") && (
+          <TeamComparison from={from.toISOString()} to={to.toISOString()} />
+        )}
       </div>
     </>
   );
@@ -249,5 +248,156 @@ function StatCard({
       <div className="text-[22px] font-black text-brand-charcoal mt-1">{value}</div>
       {hint && <div className="text-[11px] text-brand-dark-text mt-0.5">{hint}</div>}
     </Card>
+  );
+}
+
+async function TeamComparison({ from, to }: { from: string; to: string }) {
+  const sb = supabaseAdmin();
+
+  const [{ data: usersData }, { data: callsData }, { data: amountsData }] =
+    await Promise.all([
+      sb
+        .from("users")
+        .select("id,name,role,incentive_percent,incentive_rules")
+        .eq("is_active", true)
+        .in("role", ["member", "manager"]),
+      sb
+        .from("communications")
+        .select("actor_id,status,duration_seconds")
+        .eq("channel", "call")
+        .gte("created_at", from)
+        .lte("created_at", to),
+      sb
+        .from("lead_amounts")
+        .select("actor_id,amount")
+        .gte("created_at", from)
+        .lte("created_at", to),
+    ]);
+
+  const users = (usersData ?? []) as {
+    id: string;
+    name: string;
+    role: string;
+    incentive_percent: number;
+    incentive_rules: { from: number; to: number | null; percent: number }[] | null;
+  }[];
+  const calls = (callsData ?? []) as {
+    actor_id: string | null;
+    status: string;
+    duration_seconds: number | null;
+  }[];
+  const amounts = (amountsData ?? []) as {
+    actor_id: string | null;
+    amount: number;
+  }[];
+
+  const stats = users
+    .map((u) => {
+      const myCalls = calls.filter((c) => c.actor_id === u.id);
+      const totalCalls = myCalls.length;
+      const connected = myCalls.filter((c) => c.status === "answered").length;
+      const talkTime = myCalls.reduce((s, c) => s + (c.duration_seconds ?? 0), 0);
+      const myAmounts = amounts.filter((a) => a.actor_id === u.id);
+      const amountTotal = myAmounts.reduce((s, a) => s + Number(a.amount), 0);
+      const incentive = myAmounts.reduce(
+        (s, a) =>
+          s +
+          Number(a.amount) *
+            (incentivePercentForAmount(
+              Number(a.amount),
+              u.incentive_rules,
+              Number(u.incentive_percent ?? 0),
+            ) /
+              100),
+        0,
+      );
+      return {
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        totalCalls,
+        connected,
+        talkTime,
+        amountTotal,
+        incentive,
+      };
+    })
+    .sort((a, b) => b.amountTotal - a.amountTotal);
+
+  const fmtDuration = (secs: number) => {
+    if (secs < 60) return `${secs}s`;
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m ${secs % 60}s`;
+  };
+
+  return (
+    <div>
+      <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
+        Team performance
+      </h2>
+      <Card className="p-0 overflow-hidden">
+        <table className="w-full text-[14px]">
+          <thead className="bg-brand-bg border-b border-brand-border text-left">
+            <tr>
+              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                Team member
+              </th>
+              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                Calls made
+              </th>
+              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                Connected
+              </th>
+              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                Talk time
+              </th>
+              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                Amount collected
+              </th>
+              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                Incentive
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((s) => (
+              <tr key={s.id} className="border-b border-brand-border last:border-none">
+                <td className="px-6 py-3">
+                  <div className="font-semibold text-brand-charcoal">{s.name}</div>
+                  <div className="text-[11px] text-brand-dark-text uppercase tracking-[0.4px]">
+                    {s.role}
+                  </div>
+                </td>
+                <td className="px-6 py-3">{s.totalCalls}</td>
+                <td className="px-6 py-3">
+                  {s.connected}
+                  {s.totalCalls > 0 && (
+                    <span className="text-[11px] text-brand-dark-text ml-1">
+                      ({Math.round((s.connected / s.totalCalls) * 100)}%)
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-3">{fmtDuration(s.talkTime)}</td>
+                <td className="px-6 py-3 font-semibold">
+                  ₹{s.amountTotal.toLocaleString("en-IN")}
+                </td>
+                <td className="px-6 py-3 text-brand-orange font-semibold">
+                  ₹{Math.round(s.incentive).toLocaleString("en-IN")}
+                </td>
+              </tr>
+            ))}
+            {stats.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-6 py-10 text-center text-brand-dark-text">
+                  No team members yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+    </div>
   );
 }

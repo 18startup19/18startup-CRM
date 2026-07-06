@@ -30,6 +30,7 @@ import type {
   CommunicationRow,
   CustomFieldRow,
   EmailTemplateRow,
+  FaqTemplateRow,
   LeadActivityRow,
   LeadNoteRow,
   LeadRow,
@@ -71,6 +72,7 @@ interface Props {
   communications: CommunicationRow[];
   emailTemplates: EmailTemplateRow[];
   whatsappTemplates: WhatsAppTemplateRow[];
+  faqTemplates: FaqTemplateRow[];
   tagSuggestions: string[];
   lastCallLog: { outcome: string; nextCallbackAt: string | null };
   amounts: {
@@ -96,6 +98,7 @@ export function LeadCockpit({
   communications,
   emailTemplates,
   whatsappTemplates,
+  faqTemplates,
   tagSuggestions,
   lastCallLog,
   amounts,
@@ -184,15 +187,14 @@ export function LeadCockpit({
                 label="WhatsApp"
                 icon={<MessageSquare size={16} className="inline mr-1.5 -mt-0.5" />}
                 templates={whatsappTemplates.map((t) => ({ id: t.id, name: t.name }))}
+                faqSnippets={faqTemplates.map((f) => ({
+                  id: f.id,
+                  title: f.title,
+                  body: f.body,
+                }))}
                 allowFreeText
                 freeTextHint="Free text works within the 24h session window."
-                disabledReason={
-                  lead.is_dnc
-                    ? "Lead is marked DNC."
-                    : !lead.phone
-                      ? "Add a phone to Details first."
-                      : ""
-                }
+                disabledReason={!lead.phone ? "Add a phone to Details first." : ""}
                 onSubmit={async (fd) => {
                   await sendWhatsAppAction(lead.id, fd);
                 }}
@@ -850,6 +852,7 @@ function ComposePopover({
   label,
   icon,
   templates,
+  faqSnippets = [],
   allowFreeText,
   freeTextHint,
   disabledReason,
@@ -858,6 +861,7 @@ function ComposePopover({
   label: string;
   icon: React.ReactNode;
   templates: { id: string; name: string }[];
+  faqSnippets?: { id: string; title: string; body: string }[];
   allowFreeText: boolean;
   freeTextHint?: string;
   disabledReason?: string;
@@ -869,6 +873,7 @@ function ComposePopover({
   const [mode, setMode] = useState<"template" | "text">(
     templates.length > 0 ? "template" : "text",
   );
+  const [freeText, setFreeText] = useState("");
   const isDisabled = Boolean(disabledReason);
 
   return (
@@ -946,7 +951,36 @@ function ComposePopover({
               </Select>
             ) : (
               <>
-                <Textarea name="text" rows={4} required placeholder="Type your message…" />
+                <Textarea
+                  name="text"
+                  rows={4}
+                  required
+                  placeholder="Type your message…"
+                  value={freeText}
+                  onChange={(e) => setFreeText(e.target.value)}
+                />
+                {faqSnippets.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.4px] text-brand-dark-text">
+                      Insert FAQ snippet
+                    </label>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const snippet = faqSnippets.find((f) => f.id === e.target.value);
+                        if (snippet) setFreeText(snippet.body);
+                      }}
+                      className="px-3 py-1.5 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none appearance-none pr-8"
+                    >
+                      <option value="">Pick an FAQ…</option>
+                      {faqSnippets.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {freeTextHint && (
                   <p className="text-[11px] text-brand-dark-text">{freeTextHint}</p>
                 )}

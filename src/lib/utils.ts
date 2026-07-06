@@ -33,6 +33,23 @@ export function normalizePhoneDigits(raw: string | null | undefined): string {
   return String(raw).replace(/[^\d]/g, "");
 }
 
+// Choose the incentive % for a given payment amount. Iterates through the
+// user's tiers and returns the matching one; if nothing matches, falls back
+// to the base incentive_percent.
+export function incentivePercentForAmount(
+  amount: number,
+  rules: { from: number; to: number | null; percent: number }[] | null | undefined,
+  fallback: number,
+): number {
+  if (!rules || rules.length === 0) return fallback;
+  for (const r of rules) {
+    const min = Number(r.from ?? 0);
+    const max = r.to == null ? Infinity : Number(r.to);
+    if (amount >= min && amount <= max) return Number(r.percent);
+  }
+  return fallback;
+}
+
 export function slugifyKey(input: string): string {
   return input
     .toLowerCase()

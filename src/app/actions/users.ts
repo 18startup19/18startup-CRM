@@ -71,6 +71,20 @@ export async function updateUserAction(userId: string, form: FormData): Promise<
   const incentivePercent = Number.isFinite(incentivePercentRaw)
     ? Math.max(0, Math.min(100, incentivePercentRaw))
     : 0;
+  // Range-based incentive rules — parallel arrays from the form. Each row is
+  // { from, to, percent }; to=null means "and above".
+  const froms = form.getAll("incentive_from").map((v) => Number(v));
+  const tos = form.getAll("incentive_to");
+  const percents = form.getAll("incentive_percent_row").map((v) => Number(v));
+  const incentiveRules: { from: number; to: number | null; percent: number }[] = [];
+  for (let i = 0; i < percents.length; i++) {
+    const from = Number.isFinite(froms[i]) ? froms[i] : 0;
+    const toRaw = String(tos[i] ?? "");
+    const to = toRaw === "" ? null : Number(toRaw);
+    const percent = Number.isFinite(percents[i]) ? percents[i] : 0;
+    if (percent <= 0 && from === 0 && to === null) continue;
+    incentiveRules.push({ from, to, percent });
+  }
 
   const sb = supabaseAdmin();
   await sb
@@ -83,6 +97,7 @@ export async function updateUserAction(userId: string, form: FormData): Promise<
       pipeline_ids: pipelineIds,
       phone,
       incentive_percent: incentivePercent,
+      incentive_rules: incentiveRules,
     })
     .eq("id", userId);
 

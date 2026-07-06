@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { IndianRupee, TrendingUp, Users, Sparkles } from "lucide-react";
+import { IndianRupee, Users, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, incentivePercentForAmount } from "@/lib/utils";
 import { CallbacksRangePicker } from "@/components/leads/callbacks-range-picker";
 
 type RangeKey =
@@ -95,7 +95,7 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
 
   const [{ data: amountsData }, { data: usersData }] = await Promise.all([
     amountsQ,
-    sb.from("users").select("id,name,incentive_percent"),
+    sb.from("users").select("id,name,incentive_percent,incentive_rules"),
   ]);
 
   const amounts = (amountsData ?? []) as {
@@ -110,6 +110,7 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
     id: string;
     name: string;
     incentive_percent: number;
+    incentive_rules: { from: number; to: number | null; percent: number }[] | null;
   }[];
   const userById = new Map(users.map((u) => [u.id, u]));
 
@@ -127,20 +128,24 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
   const uniqueLeads = new Set(amounts.map((a) => a.lead_id));
   const uniqueUsers = new Set(amounts.map((a) => a.actor_id).filter(Boolean));
 
-  // Incentive = actor's incentive_percent × amount, summed for the range.
-  const totalIncentive = amounts.reduce((sum, a) => {
-    const rate = a.actor_id
-      ? Number(userById.get(a.actor_id)?.incentive_percent ?? 0) / 100
-      : 0;
-    return sum + Number(a.amount) * rate;
-  }, 0);
+  // Per-payment incentive using range tiers (with base % fallback).
+  const incentiveForAmount = (u: (typeof users)[number] | null, amount: number) => {
+    if (!u) return 0;
+    const pct = incentivePercentForAmount(amount, u.incentive_rules, Number(u.incentive_percent ?? 0));
+    return amount * (pct / 100);
+  };
+
+  const totalIncentive = amounts.reduce(
+    (sum, a) => sum + incentiveForAmount(a.actor_id ? userById.get(a.actor_id) ?? null : null, Number(a.amount)),
+    0,
+  );
 
   // Per-team-member breakdown for the range
   const perUser = new Map<string, { name: string; amount: number; incentive: number; count: number }>();
   for (const a of amounts) {
     const u = a.actor_id ? userById.get(a.actor_id) : null;
     const name = u?.name ?? "Unknown";
-    const rate = Number(u?.incentive_percent ?? 0) / 100;
+    const inc = incentiveForAmount(u ?? null, Number(a.amount));
     const entry = perUser.get(a.actor_id ?? "unknown") ?? {
       name,
       amount: 0,
@@ -148,7 +153,7 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
       count: 0,
     };
     entry.amount += Number(a.amount);
-    entry.incentive += Number(a.amount) * rate;
+    entry.incentive += inc;
     entry.count += 1;
     perUser.set(a.actor_id ?? "unknown", entry);
   }
@@ -174,7 +179,7 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
           />
         </div>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <StatCard
             icon={<IndianRupee size={14} />}
             label="Amount collected"
@@ -184,11 +189,6 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
             icon={<Users size={14} />}
             label="Leads converted"
             value={String(uniqueLeads.size)}
-          />
-          <StatCard
-            icon={<TrendingUp size={14} />}
-            label="Team members involved"
-            value={String(uniqueUsers.size)}
           />
           <StatCard
             icon={<Sparkles size={14} />}
@@ -253,21 +253,38 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
               </thead>
               <tbody>
                 {amounts.map((a) => (
-                  <tr key={a.id} className="border-b border-brand-border last:border-none">
+                  <tr
+                    key={a.id}
+                    className="border-b border-brand-border last:border-none hover:bg-brand-bg cursor-pointer"
+                  >
                     <Td>
                       <Link
                         href={`/leads/${a.lead_id}`}
-                        className="font-bold text-brand-charcoal hover:text-brand-orange"
+                        className="block font-bold text-brand-charcoal hover:text-brand-orange"
                       >
                         {leadNameById.get(a.lead_id) ?? "Unknown"}
                       </Link>
                     </Td>
-                    <Td>{a.actor_id ? userById.get(a.actor_id)?.name ?? "—" : "—"}</Td>
-                    <Td className="font-semibold">
-                      ₹{Number(a.amount).toLocaleString("en-IN")}
+                    <Td>
+                      <Link href={`/leads/${a.lead_id}`} className="block">
+                        {a.actor_id ? userById.get(a.actor_id)?.name ?? "—" : "—"}
+                      </Link>
                     </Td>
-                    <Td className="text-brand-dark-text">{a.note ?? "—"}</Td>
-                    <Td className="text-brand-dark-text">{formatDateTime(a.created_at)}</Td>
+                    <Td className="font-semibold">
+                      <Link href={`/leads/${a.lead_id}`} className="block">
+                        ₹{Number(a.amount).toLocaleString("en-IN")}
+                      </Link>
+                    </Td>
+                    <Td className="text-brand-dark-text">
+                      <Link href={`/leads/${a.lead_id}`} className="block">
+                        {a.note ?? "—"}
+                      </Link>
+                    </Td>
+                    <Td className="text-brand-dark-text">
+                      <Link href={`/leads/${a.lead_id}`} className="block">
+                        {formatDateTime(a.created_at)}
+                      </Link>
+                    </Td>
                   </tr>
                 ))}
                 {amounts.length === 0 && (

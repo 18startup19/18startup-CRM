@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   archiveEmailTemplateAction,
   createEmailTemplateAction,
+  toggleEmailTemplateVisibilityAction,
   updateEmailTemplateAction,
   type TemplateResult,
 } from "@/app/actions/templates";
@@ -117,6 +118,19 @@ function TemplateCard({ template }: { template: EmailTemplateRow }) {
           <div className="text-[12px] text-brand-dark-text">{template.subject}</div>
         </div>
         <div className="flex items-center gap-3">
+          <label
+            className="flex items-center gap-1.5 text-[12px] font-bold text-brand-dark-text cursor-pointer select-none"
+            title="Uncheck to hide this template from team members"
+          >
+            <input
+              type="checkbox"
+              defaultChecked={template.visible_to_members}
+              onChange={(e) =>
+                toggleEmailTemplateVisibilityAction(template.id, e.target.checked)
+              }
+            />
+            Visible to team
+          </label>
           <button
             type="button"
             onClick={() => setEditing(true)}

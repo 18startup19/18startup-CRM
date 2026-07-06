@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useActionState, useMemo, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { Plus, Upload, Search, X } from "lucide-react";
 import type {
   CustomFieldRow,
@@ -79,9 +79,45 @@ export function KanbanBoard({
   activeFilters,
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
   const [leadsByStage, setLeadsByStage] = useState(initialLeadsByStage);
+
+  // Sync local state when the server sends fresh data (after filter/sort URL
+  // changes route through the server component).
+  useEffect(() => {
+    setLeadsByStage(initialLeadsByStage);
+  }, [initialLeadsByStage]);
+
+  // Live sort — pure client state so changing the Sort dropdown re-orders
+  // instantly. The URL is synced via history.replaceState so a shared link
+  // still renders sorted correctly, but no server round-trip happens.
+  const [liveSort, setLiveSort] = useState<KanbanFilters["sort"]>(filters.sort);
+  // Keep useSearchParams referenced so the linter doesn't complain — used to
+  // pick up URL sort on subsequent full navigations.
+  void searchParams;
+  const sortedLeadsByStage = useMemo(() => {
+    const out: Record<string, LeadRow[]> = {};
+    for (const [stageId, cards] of Object.entries(leadsByStage)) {
+      const copy = [...cards];
+      copy.sort((a, b) => {
+        switch (liveSort) {
+          case "created_desc":
+            return b.created_at.localeCompare(a.created_at);
+          case "created_asc":
+            return a.created_at.localeCompare(b.created_at);
+          case "name_asc":
+            return a.name.localeCompare(b.name);
+          case "updated_desc":
+          default:
+            return b.updated_at.localeCompare(a.updated_at);
+        }
+      });
+      out[stageId] = copy;
+    }
+    return out;
+  }, [leadsByStage, liveSort]);
   const [dragging, setDragging] = useState<{ leadId: string; fromStage: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
@@ -375,10 +411,16 @@ export function KanbanBoard({
             Sort
           </span>
           <select
-            value={filters.sort}
-            onChange={(e) =>
-              updateFilter({ sort: e.target.value as KanbanFilters["sort"] })
-            }
+            value={liveSort}
+            onChange={(e) => {
+              const value = e.target.value as KanbanFilters["sort"];
+              setLiveSort(value);
+              // Sync URL for shareable links, without a server round-trip.
+              const url = new URL(window.location.href);
+              if (value === "updated_desc") url.searchParams.delete("sort");
+              else url.searchParams.set("sort", value);
+              window.history.replaceState({}, "", url.toString());
+            }}
             className="appearance-none px-3 py-1.5 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] font-semibold text-brand-charcoal outline-none pr-8"
           >
             <option value="updated_desc">Last activity</option>
@@ -431,7 +473,7 @@ export function KanbanBoard({
         <div className="overflow-x-auto pb-24">
           <div className="flex gap-3 min-w-max">
             {stages.map((s) => {
-              const cards = leadsByStage[s.id] ?? [];
+              const cards = sortedLeadsByStage[s.id] ?? [];
               const isTarget = dropTarget === s.id;
               const cardIds = cards.map((c) => c.id);
               const allSelected =

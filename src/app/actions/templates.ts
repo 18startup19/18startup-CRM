@@ -42,10 +42,31 @@ export async function updateEmailTemplateAction(id: string, form: FormData): Pro
   if (name) patch.name = name;
   if (subject) patch.subject = subject;
   if (body_html) patch.body_html = body_html;
+  patch.visible_to_members = form.get("visible_to_members") === "on";
   if (Object.keys(patch).length === 0) return;
   const sb = supabaseAdmin();
   await sb.from("email_templates").update(patch).eq("id", id);
   revalidatePath("/admin/templates");
+}
+
+export async function toggleEmailTemplateVisibilityAction(
+  id: string,
+  visible: boolean,
+): Promise<void> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  await sb.from("email_templates").update({ visible_to_members: visible }).eq("id", id);
+  revalidatePath("/admin/templates");
+}
+
+export async function toggleWhatsAppTemplateVisibilityAction(
+  id: string,
+  visible: boolean,
+): Promise<void> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  await sb.from("whatsapp_templates").update({ visible_to_members: visible }).eq("id", id);
+  revalidatePath("/admin/whatsapp-templates");
 }
 
 export async function createWhatsAppTemplateAction(

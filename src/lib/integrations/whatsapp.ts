@@ -16,7 +16,8 @@ export async function sendWhatsAppTemplate({
   actorId,
 }: WhatsAppTemplateSend): Promise<void> {
   if (!lead.phone) throw new Error("Lead has no phone number.");
-  if (lead.is_dnc) throw new Error("Lead is marked do-not-contact.");
+  // WhatsApp is allowed to DNC-marked leads (transactional/utility messaging).
+  // Email + call still respect DNC upstream in their own paths.
 
   const provider = (process.env.WHATSAPP_PROVIDER ?? "mock").toLowerCase();
   const variables = (template.variables ?? []).map((path) => resolveVar(lead, path));
@@ -81,7 +82,8 @@ export async function sendWhatsAppText({
   actorId?: string | null;
 }): Promise<void> {
   if (!lead.phone) throw new Error("Lead has no phone number.");
-  if (lead.is_dnc) throw new Error("Lead is marked do-not-contact.");
+  // WhatsApp is allowed to DNC-marked leads (transactional/utility messaging).
+  // Email + call still respect DNC upstream in their own paths.
   const provider = (process.env.WHATSAPP_PROVIDER ?? "mock").toLowerCase();
   const sb = supabaseAdmin();
   const { data: comm } = await sb

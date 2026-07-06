@@ -42,6 +42,7 @@ export interface UserRow {
   pipeline_ids: string[];
   phone: string | null;
   incentive_percent: number;
+  incentive_rules: IncentiveRule[];
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
@@ -165,6 +166,7 @@ export interface EmailTemplateRow {
   subject: string;
   body_html: string;
   is_archived: boolean;
+  visible_to_members: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -177,9 +179,16 @@ export interface WhatsAppTemplateRow {
   body: string;
   variables: string[];
   is_active: boolean;
+  visible_to_members: boolean;
   template_type: "approved" | "faq";
   approval_status: "draft" | "pending" | "approved" | "rejected";
   created_at: string;
+}
+
+export interface IncentiveRule {
+  from: number;
+  to: number | null;
+  percent: number;
 }
 
 export interface WorkflowRuleRow {

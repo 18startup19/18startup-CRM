@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   createWhatsAppTemplateAction,
   disableWhatsAppTemplateAction,
+  toggleWhatsAppTemplateVisibilityAction,
   type TemplateResult,
 } from "@/app/actions/templates";
 import type { WhatsAppTemplateRow } from "@/lib/database.types";
@@ -104,6 +105,20 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
                 {t.category && <Badge color="orange">{t.category}</Badge>}
                 {!t.is_active && <Badge color="red">Disabled</Badge>}
               </div>
+              <div className="flex items-center gap-3">
+                <label
+                  className="flex items-center gap-1.5 text-[12px] font-bold text-brand-dark-text cursor-pointer select-none"
+                  title="Uncheck to hide this template from team members"
+                >
+                  <input
+                    type="checkbox"
+                    defaultChecked={t.visible_to_members}
+                    onChange={(e) =>
+                      toggleWhatsAppTemplateVisibilityAction(t.id, e.target.checked)
+                    }
+                  />
+                  Visible to team
+                </label>
               {t.is_active && (
                 <form action={disableWhatsAppTemplateAction.bind(null, t.id)}>
                   <button
@@ -114,6 +129,7 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
                   </button>
                 </form>
               )}
+              </div>
             </div>
             <pre className="text-[13px] text-brand-charcoal bg-brand-bg border border-brand-border rounded-[8px] p-3 whitespace-pre-wrap font-sans">
               {t.body}

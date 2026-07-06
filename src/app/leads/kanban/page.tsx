@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/page-header";
 import { KanbanBoard } from "@/components/leads/kanban-board";
 import { GlobalSearch } from "@/components/global-search";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -213,8 +212,7 @@ export default async function KanbanPage({ searchParams }: PageProps) {
 
   return (
     <>
-      <PageHeader title="Kanban" subtitle="Drag cards between stages to move them." />
-      <div className="px-6 pt-4">
+      <div className="px-6 pt-6">
         <GlobalSearch />
       </div>
       <KanbanBoard

@@ -45,7 +45,7 @@ export function ActiveCallCard({ initial }: Props) {
         setCall(next);
         startedAtRef.current = new Date(next.startedAt).getTime();
       }
-    }, 4000);
+    }, 6000);
     return () => clearInterval(id);
   }, [call?.leadId, manuallyClosed]);
 

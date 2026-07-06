@@ -11,7 +11,7 @@ import {
   type UserFormResult,
 } from "@/app/actions/users";
 import { PERMISSIONS, PERMISSION_LABELS, type Permission } from "@/lib/rbac";
-import type { PipelineRow, UserRow } from "@/lib/database.types";
+import type { IncentiveRule, PipelineRow, UserRow } from "@/lib/database.types";
 import { formatRelative } from "@/lib/utils";
 
 const initial: UserFormResult = {};
@@ -209,10 +209,9 @@ function EditUserModal({
           </label>
 
           <div className="flex flex-col gap-[7px]">
-            <FieldLabel htmlFor="e-incentive">Incentive (%)</FieldLabel>
+            <FieldLabel htmlFor="e-incentive">Base incentive (%)</FieldLabel>
             <p className="text-[12px] text-brand-dark-text">
-              % of every converted-lead amount this member takes home. Applied
-              on the Converted-leads dashboard.
+              Fallback rate when no matching range is set below.
             </p>
             <Input
               id="e-incentive"
@@ -224,6 +223,8 @@ function EditUserModal({
               defaultValue={String(user.incentive_percent ?? 0)}
             />
           </div>
+
+          <IncentiveRulesEditor rules={user.incentive_rules ?? []} />
 
           <div className="border-t border-brand-border pt-4 mt-2">
             <FieldLabel>Pipeline access (members only)</FieldLabel>
@@ -299,6 +300,85 @@ function EditUserModal({
           </form>
         </div>
       </Card>
+    </div>
+  );
+}
+
+function IncentiveRulesEditor({ rules }: { rules: IncentiveRule[] }) {
+  const [rows, setRows] = useState<IncentiveRule[]>(
+    rules.length > 0 ? rules : [{ from: 0, to: null, percent: 0 }],
+  );
+
+  function addRow() {
+    setRows((prev) => [...prev, { from: 0, to: null, percent: 0 }]);
+  }
+  function removeRow(i: number) {
+    setRows((prev) => prev.filter((_, idx) => idx !== i));
+  }
+  function updateRow(i: number, patch: Partial<IncentiveRule>) {
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-brand-border pt-4">
+      <div>
+        <FieldLabel>Range-based incentive tiers (optional)</FieldLabel>
+        <p className="text-[12px] text-brand-dark-text mt-1">
+          Applied per payment. Leave the To field blank to mean "and above".
+          Tiers override the base % when a payment matches a range.
+        </p>
+      </div>
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <Input
+            name="incentive_from"
+            type="number"
+            min={0}
+            value={r.from}
+            onChange={(e) => updateRow(i, { from: Number(e.target.value) })}
+            placeholder="From ₹"
+            className="!py-2 flex-1"
+          />
+          <span className="text-brand-dark-text text-[12px]">to</span>
+          <Input
+            name="incentive_to"
+            type="number"
+            min={0}
+            value={r.to ?? ""}
+            onChange={(e) =>
+              updateRow(i, { to: e.target.value === "" ? null : Number(e.target.value) })
+            }
+            placeholder="∞"
+            className="!py-2 flex-1"
+          />
+          <span className="text-brand-dark-text text-[12px]">=</span>
+          <Input
+            name="incentive_percent_row"
+            type="number"
+            min={0}
+            max={100}
+            step="0.1"
+            value={r.percent}
+            onChange={(e) => updateRow(i, { percent: Number(e.target.value) })}
+            placeholder="%"
+            className="!py-2 w-[80px]"
+          />
+          <button
+            type="button"
+            onClick={() => removeRow(i)}
+            className="text-[13px] font-bold text-red-500 hover:text-red-600 px-1"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        className="text-[12px] font-bold text-brand-orange hover:text-brand-orange-dark self-start"
+      >
+        + Add tier
+      </button>
     </div>
   );
 }

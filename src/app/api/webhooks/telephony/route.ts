@@ -171,11 +171,13 @@ export async function POST(req: NextRequest) {
   // duration/recording that a later call_report already saved.
   const patch: Record<string, unknown> = {};
 
-  // For live_call events, only bump the status if it's a meaningful transition
-  // (answered / missed / busy / failed). Skip intermediate labels like
-  // "Transferring…" so the row doesn't churn on every state change.
-  const finalStatuses = new Set(["answered", "missed", "busy", "failed"]);
-  if (isCallReport || finalStatuses.has(normalizedStatus)) {
+  // ONLY flip status on the terminal call_report event. During a call
+  // CallerDesk fires live_call events with statuses like "Answered by Agent"
+  // (meaning the agent picked up their bridge, not that the customer picked
+  // up or the call ended). If we normalize those to "answered" the row leaves
+  // the "queued" state, the active-call card disappears, and the agent has
+  // no CRM UI while they're mid-call. So live_call events keep status intact.
+  if (isCallReport && normalizedStatus) {
     patch.status = normalizedStatus;
   }
   if (duration != null && duration > 0) patch.duration_seconds = duration;
