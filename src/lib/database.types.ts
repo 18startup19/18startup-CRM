@@ -182,6 +182,10 @@ export interface WhatsAppTemplateRow {
   visible_to_members: boolean;
   template_type: "approved" | "faq";
   approval_status: "draft" | "pending" | "approved" | "rejected";
+  provider_content_sid: string | null;
+  provider_approval_name: string | null;
+  last_status_check_at: string | null;
+  submission_error: string | null;
   created_at: string;
 }
 

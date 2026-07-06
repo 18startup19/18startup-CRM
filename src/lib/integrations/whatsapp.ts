@@ -42,7 +42,22 @@ export async function sendWhatsAppTemplate({
     let providerMessageId: string | null = null;
     switch (provider) {
       case "twilio":
-        providerMessageId = await twilioSendText(lead.phone, body);
+        // If we've submitted this template through Twilio's Content Templates
+        // API (and got back an HX... ContentSid), send via ContentSid so we
+        // ride Meta-approved template quotas + escape the 24h session window.
+        // Otherwise fall back to free-text with the interpolated body.
+        if (
+          template.provider_content_sid &&
+          template.approval_status === "approved"
+        ) {
+          providerMessageId = await twilioSendContentTemplate(
+            lead.phone,
+            template.provider_content_sid,
+            variables,
+          );
+        } else {
+          providerMessageId = await twilioSendText(lead.phone, body);
+        }
         break;
       case "gupshup":
       case "interakt":
@@ -132,6 +147,59 @@ export async function sendWhatsAppText({
 // Twilio's WhatsApp Business API is a REST endpoint that takes URL-encoded form
 // params. Free-form text only works inside the 24-hour session window; outside
 // of it Twilio requires a pre-approved Content Template (ContentSid).
+
+// Send a Meta-approved WhatsApp template via Twilio's Content API. Body text
+// is not sent — Meta renders the pre-approved template server-side using the
+// variables map ({"1":"John","2":"12000"} etc). Twilio requires the receiver
+// as a `whatsapp:+91xxx` string in `To`.
+async function twilioSendContentTemplate(
+  toE164: string,
+  contentSid: string,
+  variables: string[],
+): Promise<string> {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_WHATSAPP_FROM;
+  if (!sid || !token || !from) {
+    throw new Error(
+      "Missing TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_WHATSAPP_FROM.",
+    );
+  }
+
+  const varsMap: Record<string, string> = {};
+  variables.forEach((v, i) => {
+    varsMap[String(i + 1)] = v;
+  });
+
+  const params = new URLSearchParams({
+    From: from.startsWith("whatsapp:") ? from : `whatsapp:${from}`,
+    To: `whatsapp:${normalizePhone(toE164)}`,
+    ContentSid: contentSid,
+    ContentVariables: JSON.stringify(varsMap),
+  });
+
+  const auth = Buffer.from(`${sid}:${token}`).toString("base64");
+  const res = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    },
+  );
+  const payload = (await res.json().catch(() => null)) as
+    | { sid?: string; message?: string }
+    | null;
+  if (!res.ok) {
+    throw new Error(
+      `Twilio Content template send error (${res.status}): ${payload?.message ?? "unknown"}`,
+    );
+  }
+  return payload?.sid ?? "";
+}
 
 async function twilioSendText(toE164: string, text: string): Promise<string> {
   const sid = process.env.TWILIO_ACCOUNT_SID;

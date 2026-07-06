@@ -1,20 +1,45 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useTransition } from "react";
 import { Badge, Card, FieldError, FieldLabel, Input, Select, Textarea } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   createWhatsAppTemplateAction,
   disableWhatsAppTemplateAction,
+  refreshTemplateStatusAction,
+  submitTemplateToMetaAction,
+  syncTemplatesFromTwilioAction,
   toggleWhatsAppTemplateVisibilityAction,
   type TemplateResult,
 } from "@/app/actions/templates";
+import { useToast } from "@/components/ui/toast";
+import { useRouter } from "next/navigation";
 import type { WhatsAppTemplateRow } from "@/lib/database.types";
 
 const initial: TemplateResult = {};
 
 export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTemplateRow[] }) {
   const [state, formAction, isPending] = useActionState(createWhatsAppTemplateAction, initial);
+  const { toast } = useToast();
+  const router = useRouter();
+  const [syncPending, startSync] = useTransition();
+
+  function handleSync() {
+    startSync(async () => {
+      const res = await syncTemplatesFromTwilioAction();
+      if (res.error) toast(`Sync failed: ${res.error}`, "error");
+      else {
+        const bits: string[] = [];
+        if (res.imported) bits.push(`${res.imported} imported`);
+        if (res.updated) bits.push(`${res.updated} refreshed`);
+        toast(
+          bits.length ? `Sync complete — ${bits.join(", ")}.` : "Sync complete.",
+        );
+        router.refresh();
+      }
+    });
+  }
+
   return (
     <div className="grid grid-cols-[420px_1fr] gap-6 items-start">
       <Card className="p-6">
@@ -80,6 +105,26 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
       </Card>
 
       <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between bg-brand-bg border border-brand-border rounded-[10px] px-4 py-3">
+          <div>
+            <div className="text-[13px] font-bold text-brand-charcoal">
+              Twilio Content Templates
+            </div>
+            <div className="text-[11.5px] text-brand-dark-text">
+              Pull templates already approved on this Twilio account into the CRM.
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={handleSync}
+            loading={syncPending}
+          >
+            Sync from Twilio
+          </Button>
+        </div>
+
         {templates.map((t) => (
           <Card key={t.id} className="p-5">
             <div className="flex items-center justify-between mb-2">
@@ -119,6 +164,9 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
                   />
                   Visible to team
                 </label>
+              {t.template_type === "approved" && (
+                <TemplateStatusButtons template={t} />
+              )}
               {t.is_active && (
                 <form action={disableWhatsAppTemplateAction.bind(null, t.id)}>
                   <button
@@ -131,6 +179,17 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
               )}
               </div>
             </div>
+            {t.provider_content_sid && (
+              <div className="text-[11px] text-brand-dark-text font-mono mt-1">
+                Twilio ContentSid: {t.provider_content_sid}
+              </div>
+            )}
+            {t.submission_error && (
+              <div className="mt-2 rounded-[8px] bg-[#FEECEC] border border-red-200 px-3 py-2 text-[12px] text-red-700">
+                <span className="font-bold">Meta submission error:</span>{" "}
+                {t.submission_error}
+              </div>
+            )}
             <pre className="text-[13px] text-brand-charcoal bg-brand-bg border border-brand-border rounded-[8px] p-3 whitespace-pre-wrap font-sans">
               {t.body}
             </pre>
@@ -151,6 +210,59 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+function TemplateStatusButtons({ template }: { template: WhatsAppTemplateRow }) {
+  const [pending, start] = useTransition();
+  const { toast } = useToast();
+  const router = useRouter();
+
+  const showRefresh = Boolean(template.provider_content_sid);
+  const showSubmit =
+    !template.provider_content_sid || template.approval_status === "rejected";
+
+  if (!showRefresh && !showSubmit) return null;
+
+  return (
+    <div className="flex items-center gap-3">
+      {showRefresh && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              await refreshTemplateStatusAction(template.id);
+              toast("Status refreshed.");
+              router.refresh();
+            })
+          }
+          className="text-[12px] font-bold text-brand-orange hover:text-brand-orange-dark disabled:opacity-50"
+        >
+          {pending ? "…" : "Refresh status"}
+        </button>
+      )}
+      {showSubmit && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              await submitTemplateToMetaAction(template.id);
+              toast("Submitted to Meta via Twilio.");
+              router.refresh();
+            })
+          }
+          className="text-[12px] font-bold text-brand-orange hover:text-brand-orange-dark disabled:opacity-50"
+        >
+          {pending
+            ? "…"
+            : template.provider_content_sid
+              ? "Resubmit to Meta"
+              : "Submit to Meta"}
+        </button>
+      )}
     </div>
   );
 }
