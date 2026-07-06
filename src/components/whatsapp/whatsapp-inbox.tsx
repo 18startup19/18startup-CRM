@@ -182,6 +182,7 @@ function ChatView({
   );
   const [text, setText] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -190,14 +191,12 @@ function ChatView({
 
   function handleSend(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (lead.is_dnc) {
-      toast("This lead is marked DNC. Uncheck DNC first.", "error");
-      return;
-    }
+    // WhatsApp is allowed to DNC-marked leads (transactional/utility). Email
+    // and calls still block on DNC upstream in their own paths.
     const fd = new FormData();
     if (mode === "text") {
       const body = text.trim();
-      if (!body) return;
+      if (!body && files.length === 0) return;
       fd.set("text", body);
     } else {
       if (!templateId) {
@@ -206,12 +205,14 @@ function ChatView({
       }
       fd.set("template_id", templateId);
     }
+    for (const f of files) fd.append("attachments", f);
 
     start(async () => {
       try {
         await sendWhatsAppAction(lead.id, fd);
         setText("");
         setTemplateId("");
+        setFiles([]);
         toast("Sent.");
         router.refresh();
       } catch (err) {
@@ -350,14 +351,25 @@ function ChatView({
                 })()}
             </div>
           )}
-          <Button type="submit" size="md" disabled={pending}>
-            {pending ? "…" : (
-              <>
-                <Send size={14} className="inline mr-1 -mt-0.5" />
-                Send
-              </>
-            )}
-          </Button>
+          <div className="flex flex-col gap-1 items-end">
+            <label className="cursor-pointer text-[11px] font-bold uppercase tracking-[0.5px] text-brand-dark-text hover:text-brand-orange">
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              />
+              {files.length > 0 ? `${files.length} file${files.length === 1 ? "" : "s"}` : "+ Attach"}
+            </label>
+            <Button type="submit" size="md" disabled={pending}>
+              {pending ? "…" : (
+                <>
+                  <Send size={14} className="inline mr-1 -mt-0.5" />
+                  Send
+                </>
+              )}
+            </Button>
+          </div>
         </form>
       </div>
     </>

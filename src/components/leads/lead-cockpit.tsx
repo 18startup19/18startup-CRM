@@ -186,15 +186,32 @@ export function LeadCockpit({
               <ComposePopover
                 label="WhatsApp"
                 icon={<MessageSquare size={16} className="inline mr-1.5 -mt-0.5" />}
-                templates={whatsappTemplates.map((t) => ({ id: t.id, name: t.name }))}
+                templates={whatsappTemplates.map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  body: t.body,
+                  variables: t.variables,
+                }))}
                 faqSnippets={faqTemplates.map((f) => ({
                   id: f.id,
                   title: f.title,
                   body: f.body,
                 }))}
                 allowFreeText
-                freeTextHint="Free text works within the 24h session window."
+                freeTextHint="Free text works within the 24h session window. Type / to insert an FAQ."
                 disabledReason={!lead.phone ? "Add a phone to Details first." : ""}
+                resolveTemplateVariable={(path) => {
+                  if (path === "name") return lead.name ?? "";
+                  if (path === "email") return lead.email ?? "";
+                  if (path === "phone") return lead.phone ?? "";
+                  if (path.startsWith("custom.")) {
+                    const v = (lead.custom as Record<string, unknown> | null)?.[
+                      path.slice(7)
+                    ];
+                    return v == null ? "" : String(v);
+                  }
+                  return "";
+                }}
                 onSubmit={async (fd) => {
                   await sendWhatsAppAction(lead.id, fd);
                 }}
@@ -740,6 +757,98 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
+function FreeTextArea({
+  text,
+  setText,
+  faqSnippets,
+  hint,
+}: {
+  text: string;
+  setText: (v: string) => void;
+  faqSnippets: { id: string; title: string; body: string }[];
+  hint?: string;
+}) {
+  const [showFaq, setShowFaq] = useState(false);
+  const [query, setQuery] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const filtered = query
+    ? faqSnippets.filter(
+        (f) =>
+          f.title.toLowerCase().includes(query.toLowerCase()) ||
+          f.body.toLowerCase().includes(query.toLowerCase()),
+      )
+    : faqSnippets;
+
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value;
+    setText(value);
+    // Detect "/" at the end or "/word" pattern near the cursor
+    const cursor = e.target.selectionStart;
+    const before = value.slice(0, cursor);
+    const match = before.match(/\/([\w\s]*)$/);
+    if (match) {
+      setShowFaq(true);
+      setQuery(match[1]);
+    } else {
+      setShowFaq(false);
+    }
+  }
+
+  function insertSnippet(body: string) {
+    // Replace the trailing /query with the snippet body
+    const cursor = textareaRef.current?.selectionStart ?? text.length;
+    const before = text.slice(0, cursor).replace(/\/([\w\s]*)$/, "");
+    const after = text.slice(cursor);
+    setText(before + body + after);
+    setShowFaq(false);
+    setQuery("");
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  return (
+    <div className="relative">
+      <Textarea
+        ref={textareaRef}
+        name="text"
+        rows={4}
+        required
+        placeholder="Type your message. Type / to insert a FAQ snippet."
+        value={text}
+        onChange={handleChange}
+      />
+      {showFaq && faqSnippets.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-brand-border rounded-[10px] shadow-lg max-h-[220px] overflow-y-auto animate-fade-in">
+          {filtered.length === 0 && (
+            <div className="px-3 py-3 text-[12.5px] text-brand-dark-text">
+              No FAQs match “/{query}”.
+            </div>
+          )}
+          {filtered.map((f) => (
+            <button
+              type="button"
+              key={f.id}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                insertSnippet(f.body);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-brand-bg border-b border-brand-border last:border-none"
+            >
+              <div className="text-[13px] font-bold text-brand-charcoal">
+                {f.title}
+              </div>
+              <div className="text-[11.5px] text-brand-dark-text line-clamp-2">
+                {f.body}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {hint && <p className="text-[11px] text-brand-dark-text mt-1">{hint}</p>}
+    </div>
+  );
+}
+
 function LogCallForm({
   leadId,
   lastCallLog,
@@ -857,15 +966,24 @@ function ComposePopover({
   freeTextHint,
   disabledReason,
   onSubmit,
+  resolveTemplateVariable,
 }: {
   label: string;
   icon: React.ReactNode;
-  templates: { id: string; name: string }[];
+  templates: {
+    id: string;
+    name: string;
+    body?: string;
+    variables?: string[];
+  }[];
   faqSnippets?: { id: string; title: string; body: string }[];
   allowFreeText: boolean;
   freeTextHint?: string;
   disabledReason?: string;
   onSubmit: (fd: FormData) => Promise<void>;
+  // Optional — given a variable path like "name" or "custom.city" return the
+  // value from the current lead. Lets the popover prefill the editable inputs.
+  resolveTemplateVariable?: (path: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -874,7 +992,12 @@ function ComposePopover({
     templates.length > 0 ? "template" : "text",
   );
   const [freeText, setFreeText] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [varValues, setVarValues] = useState<string[]>([]);
   const isDisabled = Boolean(disabledReason);
+
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
+  const templateVars = selectedTemplate?.variables ?? [];
 
   return (
     <div className="relative">
@@ -941,56 +1064,95 @@ function ComposePopover({
             className="flex flex-col gap-3"
           >
             {mode === "template" ? (
-              <Select name="template_id" defaultValue="" required>
-                <option value="">Pick a template…</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </Select>
-            ) : (
               <>
-                <Textarea
-                  name="text"
-                  rows={4}
+                <Select
+                  name="template_id"
                   required
-                  placeholder="Type your message…"
-                  value={freeText}
-                  onChange={(e) => setFreeText(e.target.value)}
-                />
-                {faqSnippets.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.4px] text-brand-dark-text">
-                      Insert FAQ snippet
-                    </label>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const snippet = faqSnippets.find((f) => f.id === e.target.value);
-                        if (snippet) setFreeText(snippet.body);
-                      }}
-                      className="px-3 py-1.5 rounded-[8px] border-[1.5px] border-brand-border bg-white text-[13px] outline-none appearance-none pr-8"
-                    >
-                      <option value="">Pick an FAQ…</option>
-                      {faqSnippets.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.title}
-                        </option>
-                      ))}
-                    </select>
+                  value={selectedTemplateId}
+                  onChange={(e) => {
+                    setSelectedTemplateId(e.target.value);
+                    const tpl = templates.find((t) => t.id === e.target.value);
+                    const vars = tpl?.variables ?? [];
+                    setVarValues(
+                      vars.map((path) =>
+                        resolveTemplateVariable ? resolveTemplateVariable(path) : "",
+                      ),
+                    );
+                  }}
+                >
+                  <option value="">Pick a template…</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+                {templateVars.length > 0 && (
+                  <div className="flex flex-col gap-2 border border-brand-border rounded-[10px] p-3 bg-brand-bg">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
+                      Fill in template variables
+                    </div>
+                    {templateVars.map((path, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <label className="text-[11px] font-mono text-brand-dark-text shrink-0 min-w-[52px]">
+                          {`{{${i + 1}}}`}
+                        </label>
+                        <input
+                          type="text"
+                          name={`var_${i + 1}`}
+                          value={varValues[i] ?? ""}
+                          onChange={(e) =>
+                            setVarValues((prev) => {
+                              const next = [...prev];
+                              next[i] = e.target.value;
+                              return next;
+                            })
+                          }
+                          placeholder={path}
+                          className="flex-1 px-2 py-1 text-[12.5px] rounded-[6px] border border-brand-border bg-white outline-none focus:border-brand-orange"
+                        />
+                      </div>
+                    ))}
+                    <p className="text-[10.5px] text-brand-dark-text">
+                      Prefilled from the lead — edit any value before sending.
+                    </p>
                   </div>
                 )}
-                {freeTextHint && (
-                  <p className="text-[11px] text-brand-dark-text">{freeTextHint}</p>
+                {selectedTemplate?.body && (
+                  <div className="rounded-[10px] border border-brand-border bg-white p-3 text-[12.5px] text-brand-charcoal whitespace-pre-wrap">
+                    {templateVars.reduce(
+                      (body, _p, i) =>
+                        body.replace(
+                          new RegExp(`\\{\\{\\s*${i + 1}\\s*\\}\\}`, "g"),
+                          varValues[i] ?? `{{${i + 1}}}`,
+                        ),
+                      selectedTemplate.body,
+                    )}
+                  </div>
                 )}
               </>
+            ) : (
+              <FreeTextArea
+                text={freeText}
+                setText={setFreeText}
+                faqSnippets={faqSnippets}
+                hint={freeTextHint}
+              />
             )}
             {templates.length === 0 && mode === "template" && (
               <p className="text-[12px] text-brand-dark-text">
                 No templates yet. Add one from Admin → {label === "Email" ? "Templates" : "WhatsApp templates"}.
               </p>
             )}
+            <label className="flex flex-col gap-1 text-[11.5px] font-bold uppercase tracking-[0.4px] text-brand-dark-text">
+              Attachments
+              <input
+                type="file"
+                name="attachments"
+                multiple
+                className="text-[12px] font-normal normal-case tracking-normal text-brand-charcoal file:mr-2 file:px-2 file:py-1 file:rounded-[6px] file:border file:border-brand-border file:bg-brand-bg file:text-[11px] file:font-bold file:cursor-pointer"
+              />
+            </label>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
                 Cancel

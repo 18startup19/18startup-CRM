@@ -7,6 +7,7 @@ import {
   createWhatsAppTemplateAction,
   disableWhatsAppTemplateAction,
   refreshTemplateStatusAction,
+  restoreWhatsAppTemplateAction,
   submitTemplateToMetaAction,
   syncTemplatesFromTwilioAction,
   toggleWhatsAppTemplateVisibilityAction,
@@ -23,6 +24,8 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
   const { toast } = useToast();
   const router = useRouter();
   const [syncPending, startSync] = useTransition();
+  const active = templates.filter((t) => t.is_active);
+  const archived = templates.filter((t) => !t.is_active);
 
   function handleSync() {
     startSync(async () => {
@@ -125,7 +128,7 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
           </Button>
         </div>
 
-        {templates.map((t) => (
+        {active.map((t) => (
           <Card key={t.id} className="p-5">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -204,9 +207,46 @@ export function WhatsAppTemplatesManager({ templates }: { templates: WhatsAppTem
             )}
           </Card>
         ))}
-        {templates.length === 0 && (
+        {active.length === 0 && (
           <Card className="p-8 text-center text-brand-dark-text">
             No WhatsApp templates yet.
+          </Card>
+        )}
+
+        {archived.length > 0 && (
+          <Card className="p-5 border-dashed">
+            <div className="mb-3">
+              <h3 className="text-[14px] font-bold text-brand-charcoal">
+                Disabled templates ({archived.length})
+              </h3>
+              <p className="text-[12px] text-brand-dark-text mt-1">
+                Restore a template to make it available for sends again.
+              </p>
+            </div>
+            <ul className="flex flex-col gap-2">
+              {archived.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex items-center gap-3 border border-brand-border rounded-[8px] px-3 py-2"
+                >
+                  <div className="flex-1">
+                    <div className="font-semibold text-brand-dark-text">{t.name}</div>
+                    <div className="text-[12px] text-brand-dark-text">
+                      {t.language}
+                      {t.category ? ` • ${t.category}` : ""}
+                    </div>
+                  </div>
+                  <form action={restoreWhatsAppTemplateAction.bind(null, t.id)}>
+                    <button
+                      type="submit"
+                      className="text-[13px] font-bold text-brand-orange hover:text-brand-orange-dark"
+                    >
+                      Restore
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
       </div>

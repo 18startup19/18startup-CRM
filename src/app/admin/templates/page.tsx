@@ -5,10 +5,10 @@ import type { EmailTemplateRow } from "@/lib/database.types";
 
 export default async function EmailTemplatesPage() {
   const sb = supabaseAdmin();
+  // Include archived rows so the manager can render a Restore section.
   const { data } = await sb
     .from("email_templates")
     .select("*")
-    .eq("is_archived", false)
     .order("created_at", { ascending: false });
   const templates = (data ?? []) as EmailTemplateRow[];
   return (

@@ -5,10 +5,10 @@ import type { CustomFieldRow } from "@/lib/database.types";
 
 export default async function FieldsPage() {
   const sb = supabaseAdmin();
+  // Include archived rows so the manager can offer a Restore action.
   const { data } = await sb
     .from("custom_fields")
     .select("*")
-    .eq("is_archived", false)
     .order("position", { ascending: true });
   const fields = (data ?? []) as CustomFieldRow[];
   return (

@@ -259,13 +259,31 @@ export function KanbanBoard({
     });
   }
 
+  // Column-level "select all" is capped so a Kanban with hundreds of leads
+  // per column doesn't slam a bulk action into every row at once. Each click
+  // selects the next batch of up to BATCH_SIZE unselected leads; clicking
+  // again after everything visible is selected clears the column.
+  const BATCH_SIZE = 20;
   function toggleColumnSelect(stageId: string) {
-    const ids = (leadsByStage[stageId] ?? []).map((l) => l.id);
+    const ids = (sortedLeadsByStage[stageId] ?? leadsByStage[stageId] ?? []).map(
+      (l) => l.id,
+    );
     setSelected((prev) => {
       const next = new Set(prev);
       const allSelected = ids.length > 0 && ids.every((id) => next.has(id));
-      if (allSelected) ids.forEach((id) => next.delete(id));
-      else ids.forEach((id) => next.add(id));
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+        return next;
+      }
+      // Grab the next window of unselected leads, up to BATCH_SIZE.
+      let added = 0;
+      for (const id of ids) {
+        if (added >= BATCH_SIZE) break;
+        if (!next.has(id)) {
+          next.add(id);
+          added++;
+        }
+      }
       return next;
     });
   }
@@ -286,6 +304,9 @@ export function KanbanBoard({
 
   return (
     <div className="p-6">
+      {/* Sticky top: pipeline row + filter row remain visible while the
+          columns underneath scroll vertically. */}
+      <div className="sticky top-0 z-20 bg-brand-bg pb-3 -mx-6 px-6">
       <div className="flex items-center gap-3 mb-5">
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-bold uppercase tracking-[0.6px] text-brand-dark-text">
@@ -464,6 +485,7 @@ export function KanbanBoard({
           ))}
         </div>
       )}
+      </div>
 
       {stages.length === 0 ? (
         <div className="text-center text-brand-dark-text text-[13px] py-16 border border-dashed border-brand-border rounded-[12px]">
@@ -487,7 +509,7 @@ export function KanbanBoard({
                   onDragLeave={() => setDropTarget((cur) => (cur === s.id ? null : cur))}
                   onDrop={(e) => onColumnDrop(e, s.id)}
                 >
-                  <div className="flex items-center gap-2 px-1 mb-2">
+                  <div className="sticky top-[76px] z-10 flex items-center gap-2 px-1 py-2 bg-brand-bg -mx-1">
                     <span
                       className="inline-block w-2 h-2 rounded-full shrink-0"
                       style={{ background: s.color }}

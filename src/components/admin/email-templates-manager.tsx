@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   archiveEmailTemplateAction,
   createEmailTemplateAction,
+  restoreEmailTemplateAction,
   toggleEmailTemplateVisibilityAction,
   updateEmailTemplateAction,
   type TemplateResult,
@@ -16,6 +17,8 @@ const initial: TemplateResult = {};
 
 export function EmailTemplatesManager({ templates }: { templates: EmailTemplateRow[] }) {
   const [state, formAction, isPending] = useActionState(createEmailTemplateAction, initial);
+  const active = templates.filter((t) => !t.is_archived);
+  const archived = templates.filter((t) => t.is_archived);
 
   return (
     <div className="grid grid-cols-[420px_1fr] gap-6 items-start">
@@ -46,12 +49,46 @@ export function EmailTemplatesManager({ templates }: { templates: EmailTemplateR
       </Card>
 
       <div className="flex flex-col gap-4">
-        {templates.map((t) => (
+        {active.map((t) => (
           <TemplateCard key={t.id} template={t} />
         ))}
-        {templates.length === 0 && (
+        {active.length === 0 && (
           <Card className="p-8 text-center text-brand-dark-text">
             No email templates yet.
+          </Card>
+        )}
+
+        {archived.length > 0 && (
+          <Card className="p-5 border-dashed">
+            <div className="mb-3">
+              <h3 className="text-[14px] font-bold text-brand-charcoal">
+                Archived templates ({archived.length})
+              </h3>
+              <p className="text-[12px] text-brand-dark-text mt-1">
+                Restore a template to make it available again.
+              </p>
+            </div>
+            <ul className="flex flex-col gap-2">
+              {archived.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex items-center gap-3 border border-brand-border rounded-[8px] px-3 py-2"
+                >
+                  <div className="flex-1">
+                    <div className="font-semibold text-brand-dark-text">{t.name}</div>
+                    <div className="text-[12px] text-brand-dark-text">{t.subject}</div>
+                  </div>
+                  <form action={restoreEmailTemplateAction.bind(null, t.id)}>
+                    <button
+                      type="submit"
+                      className="text-[13px] font-bold text-brand-orange hover:text-brand-orange-dark"
+                    >
+                      Restore
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
       </div>

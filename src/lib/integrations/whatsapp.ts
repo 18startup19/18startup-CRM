@@ -5,6 +5,11 @@ export interface WhatsAppTemplateSend {
   lead: LeadRow;
   template: WhatsAppTemplateRow;
   actorId?: string | null;
+  // Explicit values for {{1}}, {{2}}, ... — if provided, they override the
+  // per-template resolveVar path so the user can tweak the fill-ins from
+  // the compose modal before hitting Send.
+  variableOverrides?: string[];
+  mediaUrls?: string[];
 }
 
 // Send an approved WhatsApp template to a lead. Templates are pre-approved with
@@ -14,13 +19,18 @@ export async function sendWhatsAppTemplate({
   lead,
   template,
   actorId,
+  variableOverrides,
+  mediaUrls,
 }: WhatsAppTemplateSend): Promise<void> {
   if (!lead.phone) throw new Error("Lead has no phone number.");
   // WhatsApp is allowed to DNC-marked leads (transactional/utility messaging).
   // Email + call still respect DNC upstream in their own paths.
 
   const provider = (process.env.WHATSAPP_PROVIDER ?? "mock").toLowerCase();
-  const variables = (template.variables ?? []).map((path) => resolveVar(lead, path));
+  const resolvedFromLead = (template.variables ?? []).map((path) =>
+    resolveVar(lead, path),
+  );
+  const variables = variableOverrides ?? resolvedFromLead;
   const body = interpolate(template.body, variables);
 
   const sb = supabaseAdmin();
@@ -42,21 +52,23 @@ export async function sendWhatsAppTemplate({
     let providerMessageId: string | null = null;
     switch (provider) {
       case "twilio":
-        // If we've submitted this template through Twilio's Content Templates
-        // API (and got back an HX... ContentSid), send via ContentSid so we
-        // ride Meta-approved template quotas + escape the 24h session window.
-        // Otherwise fall back to free-text with the interpolated body.
-        if (
-          template.provider_content_sid &&
-          template.approval_status === "approved"
-        ) {
+        // If the template has a Twilio ContentSid, always send via
+        // ContentSid — Twilio treats the local approval_status column as
+        // advisory. Templates that were synced from Twilio are already
+        // Meta-approved on their side; blocking on our column caused a
+        // "not-approved" fallback that Twilio then rejected as free-text
+        // outside the 24h window (the 404 the user was seeing).
+        if (template.provider_content_sid) {
+          // Meta template attachments live in the template header, not on the
+          // outgoing message — user-picked attachments are only applied to
+          // free-text sends below.
           providerMessageId = await twilioSendContentTemplate(
             lead.phone,
             template.provider_content_sid,
             variables,
           );
         } else {
-          providerMessageId = await twilioSendText(lead.phone, body);
+          providerMessageId = await twilioSendText(lead.phone, body, mediaUrls ?? []);
         }
         break;
       case "gupshup":
@@ -91,10 +103,12 @@ export async function sendWhatsAppText({
   lead,
   text,
   actorId,
+  mediaUrls,
 }: {
   lead: LeadRow;
   text: string;
   actorId?: string | null;
+  mediaUrls?: string[];
 }): Promise<void> {
   if (!lead.phone) throw new Error("Lead has no phone number.");
   // WhatsApp is allowed to DNC-marked leads (transactional/utility messaging).
@@ -119,7 +133,7 @@ export async function sendWhatsAppText({
     let providerMessageId: string | null = null;
     switch (provider) {
       case "twilio":
-        providerMessageId = await twilioSendText(lead.phone, text);
+        providerMessageId = await twilioSendText(lead.phone, text, mediaUrls ?? []);
         break;
       case "mock":
       default:
@@ -201,7 +215,11 @@ async function twilioSendContentTemplate(
   return payload?.sid ?? "";
 }
 
-async function twilioSendText(toE164: string, text: string): Promise<string> {
+async function twilioSendText(
+  toE164: string,
+  text: string,
+  mediaUrls: string[] = [],
+): Promise<string> {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_WHATSAPP_FROM;
@@ -216,6 +234,10 @@ async function twilioSendText(toE164: string, text: string): Promise<string> {
     To: `whatsapp:${normalizePhone(toE164)}`,
     Body: text,
   });
+  // Twilio supports up to 10 MediaUrl entries by repeating the key.
+  for (const url of mediaUrls.slice(0, 10)) {
+    params.append("MediaUrl", url);
+  }
 
   const auth = Buffer.from(`${sid}:${token}`).toString("base64");
   const res = await fetch(

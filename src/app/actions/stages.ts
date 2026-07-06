@@ -70,6 +70,14 @@ export async function archiveStageAction(id: string): Promise<void> {
   revalidatePath("/leads");
 }
 
+export async function restoreStageAction(id: string): Promise<void> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  await sb.from("lead_stages").update({ is_archived: false }).eq("id", id);
+  revalidatePath("/admin/stages");
+  revalidatePath("/leads");
+}
+
 export async function updateStageAction(id: string, form: FormData): Promise<void> {
   await requireAdmin();
   const sb = supabaseAdmin();

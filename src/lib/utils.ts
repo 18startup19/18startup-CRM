@@ -33,9 +33,14 @@ export function normalizePhoneDigits(raw: string | null | undefined): string {
   return String(raw).replace(/[^\d]/g, "");
 }
 
+// GST rate applied to converted amounts before incentive is computed. Payments
+// are recorded gross (customer-paid amount including GST), but incentives pay
+// on the net revenue.
+export const INCENTIVE_GST_RATE = 0.18;
+
 // Choose the incentive % for a given payment amount. Iterates through the
 // user's tiers and returns the matching one; if nothing matches, falls back
-// to the base incentive_percent.
+// to the base incentive_percent. `amount` should be the net (post-GST) figure.
 export function incentivePercentForAmount(
   amount: number,
   rules: { from: number; to: number | null; percent: number }[] | null | undefined,
@@ -48,6 +53,12 @@ export function incentivePercentForAmount(
     if (amount >= min && amount <= max) return Number(r.percent);
   }
   return fallback;
+}
+
+// Strips the 18% GST from a gross payment amount so the incentive tier lookup
+// and payout math run on net revenue.
+export function netAfterGst(gross: number): number {
+  return gross / (1 + INCENTIVE_GST_RATE);
 }
 
 export function slugifyKey(input: string): string {

@@ -17,7 +17,10 @@ export async function createFaqAction(
   const title = String(form.get("title") ?? "").trim();
   const body = String(form.get("body") ?? "").trim();
   const category = String(form.get("category") ?? "").trim() || null;
-  const shared = form.get("shared") === "on";
+  // Admins share FAQs by default — they're building the team library, not
+  // personal notes. Members can still tick the "Share with team" checkbox.
+  const explicitShare = form.get("shared") === "on";
+  const shared = explicitShare || session.role === "admin";
   if (!title || !body) return { error: "Title and body are required." };
   const sb = supabaseAdmin();
   const { error } = await sb.from("faq_templates").insert({

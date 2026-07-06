@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   archiveStageAction,
   createStageAction,
+  restoreStageAction,
   updateStageAction,
   type StageResult,
 } from "@/app/actions/stages";
@@ -22,9 +23,11 @@ export function StagesManager({
 }) {
   const [state, formAction, isPending] = useActionState(createStageAction, initial);
 
+  const activeStages = stages.filter((s) => !s.is_archived);
+  const archivedStages = stages.filter((s) => s.is_archived);
   const stagesByPipeline = pipelines.map((p) => ({
     pipeline: p,
-    stages: stages.filter((s) => s.pipeline_id === p.id),
+    stages: activeStages.filter((s) => s.pipeline_id === p.id),
   }));
 
   return (
@@ -97,6 +100,48 @@ export function StagesManager({
             )}
           </Card>
         ))}
+
+        {archivedStages.length > 0 && (
+          <Card className="p-0 overflow-hidden border-dashed">
+            <div className="p-4 border-b border-brand-border">
+              <h3 className="text-[14px] font-bold text-brand-charcoal">
+                Archived stages ({archivedStages.length})
+              </h3>
+              <p className="text-[12px] text-brand-dark-text mt-1">
+                Restored stages reappear in the pipeline they belonged to.
+              </p>
+            </div>
+            <ul>
+              {archivedStages.map((s) => (
+                <li
+                  key={s.id}
+                  className="border-b border-brand-border last:border-none px-6 py-3 flex items-center gap-4"
+                >
+                  <span
+                    className="inline-block w-3 h-3 rounded-full opacity-50"
+                    style={{ background: s.color }}
+                  />
+                  <span className="font-semibold flex-1 text-brand-dark-text">
+                    {s.name}
+                  </span>
+                  <Badge
+                    color={s.kind === "won" ? "green" : s.kind === "lost" ? "red" : "slate"}
+                  >
+                    {s.kind}
+                  </Badge>
+                  <form action={restoreStageAction.bind(null, s.id)}>
+                    <button
+                      type="submit"
+                      className="text-[13px] font-bold text-brand-orange hover:text-brand-orange-dark"
+                    >
+                      Restore
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
       </div>
     </div>
   );

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import {
   archiveFieldAction,
   createFieldAction,
+  restoreFieldAction,
   updateFieldAction,
   type FieldResult,
 } from "@/app/actions/custom-fields";
@@ -35,6 +36,8 @@ const TYPES: { value: CustomFieldType; label: string }[] = [
 export function FieldsManager({ fields }: { fields: CustomFieldRow[] }) {
   const [state, formAction, isPending] = useActionState(createFieldAction, initial);
   const [type, setType] = useState<CustomFieldType>("text");
+  const activeFields = fields.filter((f) => !f.is_archived);
+  const archivedFields = fields.filter((f) => f.is_archived);
 
   return (
     <div className="grid grid-cols-[380px_1fr] gap-6 items-start">
@@ -86,39 +89,78 @@ export function FieldsManager({ fields }: { fields: CustomFieldRow[] }) {
         </form>
       </Card>
 
-      <Card className="p-0 overflow-hidden">
-        <table className="w-full text-[14px]">
-          <thead className="bg-brand-bg border-b border-brand-border text-left">
-            <tr>
-              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
-                Label
-              </th>
-              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
-                Key
-              </th>
-              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
-                Type
-              </th>
-              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
-                Required
-              </th>
-              <th className="px-6 py-3 w-[80px]" />
-            </tr>
-          </thead>
-          <tbody>
-            {fields.map((f) => (
-              <FieldRow key={f.id} field={f} />
-            ))}
-            {fields.length === 0 && (
+      <div className="flex flex-col gap-4">
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full text-[14px]">
+            <thead className="bg-brand-bg border-b border-brand-border text-left">
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-brand-dark-text">
-                  No custom fields yet. Add fields on the left to start.
-                </td>
+                <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                  Label
+                </th>
+                <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                  Key
+                </th>
+                <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                  Type
+                </th>
+                <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                  Required
+                </th>
+                <th className="px-6 py-3 w-[80px]" />
               </tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
+            </thead>
+            <tbody>
+              {activeFields.map((f) => (
+                <FieldRow key={f.id} field={f} />
+              ))}
+              {activeFields.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-brand-dark-text">
+                    No custom fields yet. Add fields on the left to start.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+
+        {archivedFields.length > 0 && (
+          <Card className="p-0 overflow-hidden border-dashed">
+            <div className="p-4 border-b border-brand-border">
+              <h3 className="text-[14px] font-bold text-brand-charcoal">
+                Archived fields ({archivedFields.length})
+              </h3>
+              <p className="text-[12px] text-brand-dark-text mt-1">
+                Restored fields reappear on lead forms with their prior key.
+              </p>
+            </div>
+            <ul>
+              {archivedFields.map((f) => (
+                <li
+                  key={f.id}
+                  className="border-b border-brand-border last:border-none px-6 py-3 flex items-center gap-4"
+                >
+                  <span className="font-semibold flex-1 text-brand-dark-text">
+                    {f.label}
+                  </span>
+                  <span className="text-[11px] text-brand-dark-text font-mono">
+                    key: {f.key}
+                  </span>
+                  <Badge color="slate">{f.type}</Badge>
+                  <form action={restoreFieldAction.bind(null, f.id)}>
+                    <button
+                      type="submit"
+                      className="text-[13px] font-bold text-brand-orange hover:text-brand-orange-dark"
+                    >
+                      Restore
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

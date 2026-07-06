@@ -7,6 +7,7 @@ import type { LeadRow, EmailTemplateRow, WhatsAppTemplateRow } from "@/lib/datab
 import { sendEmail } from "@/lib/integrations/email";
 import { sendWhatsAppTemplate, sendWhatsAppText } from "@/lib/integrations/whatsapp";
 import { initiateCall } from "@/lib/integrations/telephony";
+import { uploadAttachmentsFromForm } from "@/lib/attachments";
 
 export async function sendEmailAction(leadId: string, form: FormData): Promise<void> {
   const session = await requireSession();
@@ -35,11 +36,13 @@ export async function sendEmailAction(leadId: string, form: FormData): Promise<v
   }
 
   if (!subject || !bodyHtml) return;
+  const attachmentUrls = await uploadAttachmentsFromForm(form);
   await sendEmail({
     lead: lead as LeadRow,
     subject,
     bodyHtml,
     actorId: session.userId,
+    attachmentUrls,
   });
   revalidatePath(`/leads/${leadId}`);
 }
@@ -51,16 +54,31 @@ export async function sendWhatsAppAction(leadId: string, form: FormData): Promis
   const sb = supabaseAdmin();
   const { data: lead } = await sb.from("leads").select("*").eq("id", leadId).single();
   if (!lead) return;
+  const mediaUrls = await uploadAttachmentsFromForm(form);
   if (templateId) {
     const { data: tpl } = await sb.from("whatsapp_templates").select("*").eq("id", templateId).single();
     if (!tpl) return;
+    // Optional per-send variable overrides posted as var_1, var_2, ...
+    const overrides: string[] = [];
+    let i = 1;
+    while (form.has(`var_${i}`)) {
+      overrides.push(String(form.get(`var_${i}`) ?? ""));
+      i++;
+    }
     await sendWhatsAppTemplate({
       lead: lead as LeadRow,
       template: tpl as WhatsAppTemplateRow,
       actorId: session.userId,
+      variableOverrides: overrides.length > 0 ? overrides : undefined,
+      mediaUrls,
     });
-  } else if (text) {
-    await sendWhatsAppText({ lead: lead as LeadRow, text, actorId: session.userId });
+  } else if (text || mediaUrls.length > 0) {
+    await sendWhatsAppText({
+      lead: lead as LeadRow,
+      text: text || "",
+      actorId: session.userId,
+      mediaUrls,
+    });
   }
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/whatsapp");

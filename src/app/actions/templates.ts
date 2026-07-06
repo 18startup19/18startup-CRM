@@ -16,6 +16,19 @@ export interface TemplateResult {
   ok?: boolean;
 }
 
+// Preserve formatting the admin actually typed in the plain textarea. If the
+// input already contains HTML tags we assume the admin knew what they were
+// doing; otherwise wrap paragraphs and turn single newlines into <br>.
+function normaliseTemplateBody(raw: string): string {
+  if (/<[a-z][^>]*>/i.test(raw)) return raw;
+  const paragraphs = raw
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`);
+  return paragraphs.join("\n");
+}
+
 export async function createEmailTemplateAction(
   _prev: TemplateResult,
   form: FormData,
@@ -27,7 +40,9 @@ export async function createEmailTemplateAction(
   if (!name || !subject || !body_html) return { error: "All fields are required." };
 
   const sb = supabaseAdmin();
-  const { error } = await sb.from("email_templates").insert({ name, subject, body_html });
+  const { error } = await sb
+    .from("email_templates")
+    .insert({ name, subject, body_html: normaliseTemplateBody(body_html) });
   if (error) return { error: error.message };
   revalidatePath("/admin/templates");
   return { ok: true };
@@ -40,6 +55,20 @@ export async function archiveEmailTemplateAction(id: string): Promise<void> {
   revalidatePath("/admin/templates");
 }
 
+export async function restoreEmailTemplateAction(id: string): Promise<void> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  await sb.from("email_templates").update({ is_archived: false }).eq("id", id);
+  revalidatePath("/admin/templates");
+}
+
+export async function restoreWhatsAppTemplateAction(id: string): Promise<void> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  await sb.from("whatsapp_templates").update({ is_active: true }).eq("id", id);
+  revalidatePath("/admin/whatsapp-templates");
+}
+
 export async function updateEmailTemplateAction(id: string, form: FormData): Promise<void> {
   await requireAdmin();
   const patch: Record<string, unknown> = {};
@@ -48,7 +77,7 @@ export async function updateEmailTemplateAction(id: string, form: FormData): Pro
   const body_html = String(form.get("body_html") ?? "").trim();
   if (name) patch.name = name;
   if (subject) patch.subject = subject;
-  if (body_html) patch.body_html = body_html;
+  if (body_html) patch.body_html = normaliseTemplateBody(body_html);
   patch.visible_to_members = form.get("visible_to_members") === "on";
   if (Object.keys(patch).length === 0) return;
   const sb = supabaseAdmin();

@@ -82,6 +82,14 @@ export async function archiveFieldAction(id: string): Promise<void> {
   revalidatePath("/leads");
 }
 
+export async function restoreFieldAction(id: string): Promise<void> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  await sb.from("custom_fields").update({ is_archived: false }).eq("id", id);
+  revalidatePath("/admin/fields");
+  revalidatePath("/leads");
+}
+
 export async function updateFieldAction(id: string, form: FormData): Promise<void> {
   await requireAdmin();
   const sb = supabaseAdmin();

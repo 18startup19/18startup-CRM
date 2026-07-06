@@ -7,7 +7,9 @@ export default async function StagesPage() {
   const sb = supabaseAdmin();
   const [{ data: pipelinesData }, { data: stagesData }] = await Promise.all([
     sb.from("pipelines").select("*").eq("is_archived", false).order("position"),
-    sb.from("lead_stages").select("*").eq("is_archived", false).order("position"),
+    // Pull archived rows too — the manager renders them in a collapsed
+    // "Archived" section so admins can restore them.
+    sb.from("lead_stages").select("*").order("position"),
   ]);
   const pipelines = (pipelinesData ?? []) as PipelineRow[];
   const stages = (stagesData ?? []) as LeadStageRow[];

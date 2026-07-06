@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
-import { formatDateTime, incentivePercentForAmount } from "@/lib/utils";
+import { formatDateTime, incentivePercentForAmount, netAfterGst } from "@/lib/utils";
 import { CallbacksRangePicker } from "@/components/leads/callbacks-range-picker";
 
 type RangeKey =
@@ -128,11 +128,14 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
   const uniqueLeads = new Set(amounts.map((a) => a.lead_id));
   const uniqueUsers = new Set(amounts.map((a) => a.actor_id).filter(Boolean));
 
-  // Per-payment incentive using range tiers (with base % fallback).
+  // Per-payment incentive using range tiers (with base % fallback). The
+  // customer-paid amount is gross-of-GST; the tier match + payout use the
+  // net (post-GST) figure per company policy.
   const incentiveForAmount = (u: (typeof users)[number] | null, amount: number) => {
     if (!u) return 0;
-    const pct = incentivePercentForAmount(amount, u.incentive_rules, Number(u.incentive_percent ?? 0));
-    return amount * (pct / 100);
+    const net = netAfterGst(amount);
+    const pct = incentivePercentForAmount(net, u.incentive_rules, Number(u.incentive_percent ?? 0));
+    return net * (pct / 100);
   };
 
   const totalIncentive = amounts.reduce(

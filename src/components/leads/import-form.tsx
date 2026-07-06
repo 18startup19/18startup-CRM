@@ -14,7 +14,7 @@ const BUILTIN_COLS = [
   "email",
   "pipeline",
   "stage",
-  "owner_email",
+  "owner_name",
   "tags",
 ];
 
@@ -58,8 +58,8 @@ export function ImportForm({ fields }: { fields: CustomFieldRow[] }) {
             created automatically.
           </li>
           <li>
-            <code>owner_email</code> must match an existing user; unknown emails fall back to the
-            importer.
+            <code>owner_name</code> must match an existing team member by name;
+            unknown names fall back to the importer.
           </li>
           <li>
             <code>tags</code> can be separated by <code>,</code>, <code>;</code>, or <code>|</code>.
@@ -129,7 +129,7 @@ function buildTemplateHref(cols: string[]): string {
           return "Default";
         case "stage":
           return "New";
-        case "owner_email":
+        case "owner_name":
           return "";
         case "tags":
           return "hot|referral";

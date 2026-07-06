@@ -42,7 +42,7 @@ export async function importCsvAction(_prev: ImportResult, form: FormData): Prom
   const [{ data: pipelinesData }, { data: stagesData }, { data: usersData }] = await Promise.all([
     sb.from("pipelines").select("id,name").eq("is_archived", false),
     sb.from("lead_stages").select("id,name,pipeline_id,position").eq("is_archived", false),
-    sb.from("users").select("id,email").eq("is_active", true),
+    sb.from("users").select("id,name,email").eq("is_active", true),
   ]);
 
   const pipelineByName = new Map<string, string>(
@@ -54,8 +54,10 @@ export async function importCsvAction(_prev: ImportResult, form: FormData): Prom
       String(s.id),
     ]),
   );
-  const userByEmail = new Map<string, string>(
-    (usersData ?? []).map((u) => [String(u.email).toLowerCase(), String(u.id)]),
+  // Lookup owners by team-member name so the CSV template can just say
+  // "owner_name" instead of asking the importer to know each teammate's email.
+  const userByName = new Map<string, string>(
+    (usersData ?? []).map((u) => [String(u.name).toLowerCase(), String(u.id)]),
   );
 
   const createdPipelines: string[] = [];
@@ -152,7 +154,9 @@ export async function importCsvAction(_prev: ImportResult, form: FormData): Prom
     try {
       const pipelineName = String(row.pipeline ?? row.Pipeline ?? "").trim();
       const stageName = String(row.stage ?? row.Stage ?? "").trim();
-      const ownerEmail = String(row.owner_email ?? row.OwnerEmail ?? "")
+      const ownerName = String(
+        row.owner_name ?? row.OwnerName ?? row.owner_email ?? row.OwnerEmail ?? "",
+      )
         .trim()
         .toLowerCase();
 
@@ -175,8 +179,8 @@ export async function importCsvAction(_prev: ImportResult, form: FormData): Prom
         stageId = firstOfPipeline?.id ?? null;
       }
 
-      if (ownerEmail) {
-        const found = userByEmail.get(ownerEmail);
+      if (ownerName) {
+        const found = userByName.get(ownerName);
         if (found) ownerId = found;
       }
     } catch (err) {

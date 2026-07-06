@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
 import { CallbacksRangePicker } from "@/components/leads/callbacks-range-picker";
-import { incentivePercentForAmount } from "@/lib/utils";
+import { incentivePercentForAmount, netAfterGst } from "@/lib/utils";
 
 type RangeKey =
   | "today"
@@ -153,8 +153,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   const ratePct = Number(me?.incentive_percent ?? 0);
   const rate = ratePct / 100;
-  const incentiveToday = amountToday * rate;
-  const incentiveMonth = monthAmount * rate;
+  // Strip 18% GST before applying the rate — incentives pay on net revenue.
+  const incentiveToday = netAfterGst(amountToday) * rate;
+  const incentiveMonth = netAfterGst(monthAmount) * rate;
 
   const assignedTodayCount = (
     (assignedTodayData ?? []) as { payload: Record<string, unknown> }[]
@@ -269,7 +270,7 @@ async function TeamComparison({ from, to }: { from: string; to: string }) {
         .lte("created_at", to),
       sb
         .from("lead_amounts")
-        .select("actor_id,amount")
+        .select("actor_id,amount,lead_id")
         .gte("created_at", from)
         .lte("created_at", to),
     ]);
@@ -299,16 +300,25 @@ async function TeamComparison({ from, to }: { from: string; to: string }) {
       const talkTime = myCalls.reduce((s, c) => s + (c.duration_seconds ?? 0), 0);
       const myAmounts = amounts.filter((a) => a.actor_id === u.id);
       const amountTotal = myAmounts.reduce((s, a) => s + Number(a.amount), 0);
+      // "Converted leads" = distinct leads this member closed with at least
+      // one payment in the range. Different from raw payment count because a
+      // single lead can pay in installments.
+      const convertedLeadIds = new Set<string>();
+      for (const a of (amountsData ?? []) as { actor_id: string | null; lead_id: string }[]) {
+        if (a.actor_id === u.id) convertedLeadIds.add(a.lead_id);
+      }
       const incentive = myAmounts.reduce(
-        (s, a) =>
-          s +
-          Number(a.amount) *
-            (incentivePercentForAmount(
-              Number(a.amount),
-              u.incentive_rules,
-              Number(u.incentive_percent ?? 0),
-            ) /
-              100),
+        (s, a) => {
+          // Strip 18% GST before applying the incentive rate — per the ask,
+          // GST is not part of the earnings base.
+          const netAmount = Number(a.amount) / 1.18;
+          const rate = incentivePercentForAmount(
+            netAmount,
+            u.incentive_rules,
+            Number(u.incentive_percent ?? 0),
+          );
+          return s + netAmount * (rate / 100);
+        },
         0,
       );
       return {
@@ -319,6 +329,7 @@ async function TeamComparison({ from, to }: { from: string; to: string }) {
         connected,
         talkTime,
         amountTotal,
+        convertedLeads: convertedLeadIds.size,
         incentive,
       };
     })
@@ -354,6 +365,9 @@ async function TeamComparison({ from, to }: { from: string; to: string }) {
                 Talk time
               </th>
               <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
+                Converted leads
+              </th>
+              <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
                 Amount collected
               </th>
               <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
@@ -380,6 +394,7 @@ async function TeamComparison({ from, to }: { from: string; to: string }) {
                   )}
                 </td>
                 <td className="px-6 py-3">{fmtDuration(s.talkTime)}</td>
+                <td className="px-6 py-3">{s.convertedLeads}</td>
                 <td className="px-6 py-3 font-semibold">
                   ₹{s.amountTotal.toLocaleString("en-IN")}
                 </td>
@@ -390,7 +405,7 @@ async function TeamComparison({ from, to }: { from: string; to: string }) {
             ))}
             {stats.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-brand-dark-text">
+                <td colSpan={7} className="px-6 py-10 text-center text-brand-dark-text">
                   No team members yet.
                 </td>
               </tr>

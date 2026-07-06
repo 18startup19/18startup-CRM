@@ -1,17 +1,19 @@
 import { supabaseAdmin } from "../supabase-admin";
 import type { LeadRow } from "../database.types";
 import { renderTemplate } from "../utils";
+import { fetchAsBase64 } from "../attachments";
 
 export interface EmailSend {
   lead: LeadRow;
   subject: string;
   bodyHtml: string;
   actorId?: string | null;
+  attachmentUrls?: string[];
 }
 
 // Send an email via the configured provider. In dev / on error, falls back to
 // the "mock" provider which just logs the communication row.
-export async function sendEmail({ lead, subject, bodyHtml, actorId }: EmailSend): Promise<void> {
+export async function sendEmail({ lead, subject, bodyHtml, actorId, attachmentUrls }: EmailSend): Promise<void> {
   if (!lead.email) throw new Error("Lead has no email address.");
   if (lead.is_dnc) throw new Error("Lead is marked do-not-contact.");
 
@@ -39,7 +41,12 @@ export async function sendEmail({ lead, subject, bodyHtml, actorId }: EmailSend)
     let providerMessageId: string | null = null;
     switch (provider) {
       case "sendgrid":
-        providerMessageId = await sendgridSend(lead.email, renderedSubject, renderedBody);
+        providerMessageId = await sendgridSend(
+          lead.email,
+          renderedSubject,
+          renderedBody,
+          attachmentUrls ?? [],
+        );
         break;
       case "ses":
         // TODO: implement SES if needed.
@@ -74,12 +81,23 @@ async function sendgridSend(
   to: string,
   subject: string,
   bodyHtml: string,
+  attachmentUrls: string[],
 ): Promise<string> {
   const apiKey = process.env.SENDGRID_API_KEY;
   const fromEmail = process.env.EMAIL_FROM_ADDRESS;
   const fromName = process.env.EMAIL_FROM_NAME ?? "";
   if (!apiKey) throw new Error("Missing SENDGRID_API_KEY.");
   if (!fromEmail) throw new Error("Missing EMAIL_FROM_ADDRESS.");
+
+  const attachments =
+    attachmentUrls.length > 0
+      ? await Promise.all(
+          attachmentUrls.map(async (u) => {
+            const { base64, contentType, filename } = await fetchAsBase64(u);
+            return { content: base64, type: contentType, filename, disposition: "attachment" };
+          }),
+        )
+      : undefined;
 
   const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
     method: "POST",
@@ -92,6 +110,7 @@ async function sendgridSend(
       from: { email: fromEmail, name: fromName || undefined },
       subject,
       content: [{ type: "text/html", value: bodyHtml }],
+      ...(attachments ? { attachments } : {}),
     }),
   });
   if (!res.ok) {

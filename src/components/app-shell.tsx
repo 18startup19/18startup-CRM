@@ -32,8 +32,8 @@ interface NavItem {
 }
 
 const memberNav: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/leads/kanban", label: "Kanban", icon: Layers },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/leads/callbacks", label: "My Callbacks", icon: ListChecks },
   { href: "/converted-leads", label: "Converted leads", icon: IndianRupee },
