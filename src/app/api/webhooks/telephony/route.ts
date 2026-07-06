@@ -94,20 +94,25 @@ export async function POST(req: NextRequest) {
   ).trim();
   if (!providerCallId) return Response.json({ ok: true, ignored: true });
 
+  // Prefer talk time (actual conversation) over total call time (which
+  // includes ringing). Only fall back to Call/Dial duration if talk time
+  // isn't provided.
   const durationCandidates = [
+    body.TalkDuration,
+    body.talkDuration,
+    body.TalkTime,
+    body.talkTime,
+    body.talktime,
+    body.answered_duration,
+    body.AnsweredDuration,
     body.DialCallDuration,
     body.duration,
     body.call_duration,
     body.callDuration,
     body.CallDuration,
     body.Duration,
-    body.talktime,
-    body.talkTime,
-    body.TalkTime,
     body.total_duration,
     body.totalDuration,
-    body.answered_duration,
-    body.AnsweredDuration,
     body.call_time,
   ];
   const durationRaw = durationCandidates.find(
