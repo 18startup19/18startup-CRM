@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, FileText } from "lucide-react";
+import { Plus, FileText, Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -239,10 +239,10 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
                     key={inv.id}
                     className="border-b border-brand-border last:border-none hover:bg-brand-bg/40 cursor-pointer"
                   >
-                    <Td className="font-mono text-[12.5px] font-bold text-brand-charcoal">
+                    <Td className="font-mono text-[12.5px] font-bold">
                       <Link
                         href={`/invoices/${inv.id}`}
-                        className="block hover:text-brand-orange"
+                        className="block text-brand-orange hover:text-brand-orange-dark underline decoration-dotted underline-offset-2"
                       >
                         {inv.invoice_number ?? "—"}
                       </Link>
@@ -292,7 +292,7 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
                       </Link>
                     </Td>
                     <Td>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge
                           color={
                             inv.sync_status === "synced"
@@ -304,6 +304,18 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
                         >
                           {inv.sync_status}
                         </Badge>
+                        {inv.sync_status === "synced" && inv.finance_tracker_id && (
+                          <a
+                            href={`/api/invoices/${inv.id}/pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11.5px] font-bold text-brand-orange hover:text-brand-orange-dark"
+                            title="Download invoice PDF from Finance Tracker"
+                          >
+                            <Download size={11} />
+                            PDF
+                          </a>
+                        )}
                         {inv.sync_status !== "synced" && (
                           <InvoiceResyncButton id={inv.id} />
                         )}
