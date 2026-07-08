@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Send, MessageSquare, User, Search, Paperclip } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingScreen } from "@/components/loading-screen";
 import { sendWhatsAppAction } from "@/app/actions/comms";
 import { formatDateTime, formatRelative } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -40,6 +41,16 @@ export function WhatsAppInbox({
 }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  // Track which conversation the user just clicked so we can show a loading
+  // screen in the right pane until the server sends the new thread. Cleared
+  // as soon as selectedLeadId catches up.
+  const [pendingLeadId, setPendingLeadId] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  useEffect(() => {
+    if (pendingLeadId && pendingLeadId === selectedLeadId) {
+      setPendingLeadId(null);
+    }
+  }, [pendingLeadId, selectedLeadId]);
 
   // Poll the server for new inbound messages every 5 seconds. router.refresh()
   // re-renders the server component in place — much cheaper than a full nav.
@@ -98,11 +109,19 @@ export function WhatsAppInbox({
             <ul>
               {filtered.map((c) => (
                 <li key={c.leadId}>
-                  <Link
-                    href={`/whatsapp?lead=${c.leadId}`}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (c.leadId === selectedLeadId) return;
+                      setPendingLeadId(c.leadId);
+                      startTransition(() => {
+                        router.push(`/whatsapp?lead=${c.leadId}`);
+                      });
+                    }}
                     className={
-                      "block px-4 py-3 border-b border-brand-border hover:bg-brand-bg " +
-                      (c.leadId === selectedLeadId ? "bg-[#FFF4EF]" : "")
+                      "w-full text-left block px-4 py-3 border-b border-brand-border hover:bg-brand-bg " +
+                      (c.leadId === selectedLeadId ? "bg-[#FFF4EF]" : "") +
+                      (c.leadId === pendingLeadId ? " opacity-60" : "")
                     }
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -126,7 +145,7 @@ export function WhatsAppInbox({
                         </span>
                       )}
                     </div>
-                  </Link>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -136,7 +155,9 @@ export function WhatsAppInbox({
 
       {/* RIGHT PANE — thread + compose */}
       <div className="flex-1 flex flex-col bg-brand-bg">
-        {!selectedLead ? (
+        {pending && pendingLeadId ? (
+          <LoadingScreen message="Loading conversation…" />
+        ) : !selectedLead ? (
           <div className="flex-1 flex items-center justify-center text-brand-dark-text">
             <div className="text-center">
               <MessageSquare size={44} className="inline text-brand-border mb-3" />
