@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { NotificationsBridge } from "@/components/notifications-bridge";
 import { ActiveCallMount } from "@/components/leads/active-call-mount";
+import { WhatsAppInboundToaster } from "@/components/wa-inbound-toaster";
 import { requireSession } from "@/lib/rbac-server";
 
 export default async function FaqLayout({ children }: { children: React.ReactNode }) {
@@ -9,6 +10,7 @@ export default async function FaqLayout({ children }: { children: React.ReactNod
     <AppShell session={session} section="leads">
       <NotificationsBridge />
       <ActiveCallMount />
+      <WhatsAppInboundToaster />
       {children}
     </AppShell>
   );
