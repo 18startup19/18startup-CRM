@@ -26,19 +26,31 @@ export async function syncInvoiceToFinanceTracker(
     };
   }
 
-  const payload = {
+  // Match the Finance Tracker schema. CRM totals are gross-of-GST (18%);
+  // we split them into ex-GST unit_price + gst_rate so the Finance Tracker
+  // recomputes the same total with a proper tax breakdown.
+  const GST_RATE = 18;
+  const grossTotal = Number(inv.total_amount);
+  const unitPrice = Number((grossTotal / (1 + GST_RATE / 100)).toFixed(2));
+
+  const payload: Record<string, unknown> = {
     invoice_number: inv.invoice_number,
-    customer_name: inv.customer_name,
-    company_name: inv.company_name,
-    company_address: inv.company_address,
-    gst_number: inv.gst_number,
-    pan_number: inv.pan_number,
-    product_name: inv.product_name,
-    total_amount: Number(inv.total_amount),
     invoice_date: inv.invoice_date,
-    source: "crm",
-    source_id: inv.id,
+    payee_name: inv.customer_name,
+    company_name: inv.company_name,
+    bill_to_address: inv.company_address,
+    bill_to_gst: inv.gst_number,
+    status: "issued",
+    line_items: [
+      {
+        description: inv.product_name,
+        quantity: 1,
+        unit_price: unitPrice,
+        gst_rate: GST_RATE,
+      },
+    ],
   };
+  if (inv.pan_number) payload.bill_to_pan = inv.pan_number;
 
   try {
     // FINANCE_TRACKER_API_URL is the full endpoint (e.g. .../api/external/invoices)
