@@ -41,7 +41,9 @@ export async function syncInvoiceToFinanceTracker(
   };
 
   try {
-    const res = await fetch(`${url.replace(/\/$/, "")}/api/invoices`, {
+    // FINANCE_TRACKER_API_URL is the full endpoint (e.g. .../api/external/invoices)
+    // — we don't append anything to it.
+    const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
