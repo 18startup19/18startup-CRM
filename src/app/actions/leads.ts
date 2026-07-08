@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { hasPermission } from "@/lib/rbac";
@@ -95,6 +95,7 @@ export async function createLeadAction(_prev: LeadResult, form: FormData): Promi
   await runWorkflows("lead_created", lead as LeadRow, { session });
 
   revalidatePath("/leads");
+  revalidateTag("leads-tags", "max");
   return { ok: true, leadId: lead.id };
 }
 
@@ -158,6 +159,7 @@ export async function updateLeadAction(
 
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
+  revalidateTag("leads-tags", "max");
   return { ok: true };
 }
 

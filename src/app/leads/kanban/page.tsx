@@ -2,6 +2,7 @@ import { KanbanBoard } from "@/components/leads/kanban-board";
 import { GlobalSearch } from "@/components/global-search";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
+import { getTagSuggestions } from "@/lib/tag-suggestions";
 import type {
   CustomFieldRow,
   LeadRow,
@@ -193,15 +194,8 @@ export default async function KanbanPage({ searchParams }: PageProps) {
     ? (cfg.kanban_card_fields as string[])
     : DEFAULT_CARD_FIELDS;
 
-  // Distinct tags from every non-archived lead — so the filter dropdown and
-  // the tag chip input suggestions include tags used on OTHER leads too, not
-  // just what's currently visible.
-  const { data: tagRows } = await sb.from("leads").select("tags").limit(5000);
-  const tagSet = new Set<string>();
-  for (const row of (tagRows ?? []) as { tags: string[] | null }[]) {
-    for (const t of row.tags ?? []) tagSet.add(t);
-  }
-  const tagOptions = Array.from(tagSet).sort();
+  // Tag suggestions — cached across pages for 60s (getTagSuggestions).
+  const tagOptions = await getTagSuggestions();
 
   const activeFilters = rawFilters
     .map((raw) => {

@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import Papa from "papaparse";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
@@ -217,6 +217,7 @@ export async function importCsvAction(_prev: ImportResult, form: FormData): Prom
 
   revalidatePath("/leads/kanban");
   revalidatePath("/leads");
+  revalidateTag("leads-tags", "max");
   return {
     ok: true,
     inserted: insertedRows?.length ?? rows.length,

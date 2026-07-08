@@ -37,81 +37,51 @@ export default async function WhatsAppPage({ searchParams }: PageProps) {
     session.role === "admin" ||
     (userRow?.permissions as Record<string, boolean> | null)?.["leads:view_all"] === true;
 
-  // Get distinct lead IDs that have any WhatsApp comm, then for each pick the
-  // latest message. Doing it lead-first (rather than pulling the last 500 comms
-  // and grouping) ensures older conversations don't drop off just because the
-  // 500-row window slides forward as new messages arrive.
-  let leadIdRows: { lead_id: string }[] = [];
-  if (canSeeAll) {
-    const { data } = await sb
-      .from("communications")
-      .select("lead_id")
-      .eq("channel", "whatsapp")
-      .order("created_at", { ascending: false })
-      .limit(5000);
-    leadIdRows = (data ?? []) as { lead_id: string }[];
-  } else {
-    const { data: myLeads } = await sb
-      .from("leads")
-      .select("id")
-      .eq("owner_id", session.userId);
-    const myIds = (myLeads ?? []).map((l) => l.id);
-    if (myIds.length > 0) {
-      const { data } = await sb
-        .from("communications")
-        .select("lead_id")
-        .eq("channel", "whatsapp")
-        .in("lead_id", myIds)
-        .order("created_at", { ascending: false })
-        .limit(5000);
-      leadIdRows = (data ?? []) as { lead_id: string }[];
-    }
-  }
-
-  const distinctLeadIds = Array.from(new Set(leadIdRows.map((r) => r.lead_id)));
-
+  // One scoped scan of the last 2000 WhatsApp comms; group client-side. This
+  // replaces the prior "distinct lead ids then per-lead history" pattern
+  // which did the equivalent scan twice.
   type CommRow = Pick<
     CommunicationRow,
     "id" | "lead_id" | "body" | "direction" | "status" | "created_at"
   >;
 
-  const [{ data: latestRows }, { data: unreadRows }, { data: waTemplates }] =
+  let recentQ = sb
+    .from("communications")
+    .select("id,lead_id,body,direction,status,created_at")
+    .eq("channel", "whatsapp")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  if (!canSeeAll) {
+    const { data: myLeads } = await sb
+      .from("leads")
+      .select("id")
+      .eq("owner_id", session.userId);
+    const myIds = (myLeads ?? []).map((l) => l.id);
+    if (myIds.length === 0) recentQ = recentQ.eq("lead_id", "__none__");
+    else recentQ = recentQ.in("lead_id", myIds);
+  }
+
+  const [{ data: recentRows }, { data: waTemplates }, { data: faqData }] =
     await Promise.all([
-      distinctLeadIds.length > 0
-        ? sb
-            .from("communications")
-            .select("id,lead_id,body,direction,status,created_at")
-            .eq("channel", "whatsapp")
-            .in("lead_id", distinctLeadIds)
-            .order("created_at", { ascending: false })
-        : Promise.resolve({ data: [] }),
-      distinctLeadIds.length > 0
-        ? sb
-            .from("communications")
-            .select("lead_id,status,direction")
-            .eq("channel", "whatsapp")
-            .in("lead_id", distinctLeadIds)
-            .eq("direction", "inbound")
-            .neq("status", "read")
-        : Promise.resolve({ data: [] }),
+      recentQ,
       sb.from("whatsapp_templates").select("*").eq("is_active", true),
+      sb
+        .from("faq_templates")
+        .select("*")
+        .eq("is_archived", false)
+        .or(`owner_id.eq.${session.userId},owner_id.is.null`)
+        .order("title"),
     ]);
 
-  const { data: faqData } = await sb
-    .from("faq_templates")
-    .select("*")
-    .eq("is_archived", false)
-    .or(`owner_id.eq.${session.userId},owner_id.is.null`)
-    .order("title");
   const faqTemplates = (faqData ?? []) as FaqTemplateRow[];
 
   const latestByLead = new Map<string, CommRow>();
-  for (const c of (latestRows ?? []) as CommRow[]) {
-    if (!latestByLead.has(c.lead_id)) latestByLead.set(c.lead_id, c);
-  }
   const unreadByLead = new Map<string, number>();
-  for (const c of (unreadRows ?? []) as { lead_id: string }[]) {
-    unreadByLead.set(c.lead_id, (unreadByLead.get(c.lead_id) ?? 0) + 1);
+  for (const c of (recentRows ?? []) as CommRow[]) {
+    if (!latestByLead.has(c.lead_id)) latestByLead.set(c.lead_id, c);
+    if (c.direction === "inbound" && c.status !== "read") {
+      unreadByLead.set(c.lead_id, (unreadByLead.get(c.lead_id) ?? 0) + 1);
+    }
   }
 
   const leadIds = Array.from(latestByLead.keys());

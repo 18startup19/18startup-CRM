@@ -2,6 +2,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
 import { LeadCockpit } from "@/components/leads/lead-cockpit";
+import { getTagSuggestions } from "@/lib/tag-suggestions";
 import type {
   CustomFieldRow,
   LeadNoteRow,
@@ -36,7 +37,6 @@ export default async function LeadDetailPage({ params }: Params) {
     emailTplRes,
     waTplRes,
     meRes,
-    tagRes,
     faqRes,
   ] = await Promise.all([
       sb.from("leads").select("*").eq("id", id).maybeSingle(),
@@ -64,7 +64,6 @@ export default async function LeadDetailPage({ params }: Params) {
             .eq("visible_to_members", true)
             .order("name"),
       sb.from("users").select("permissions").eq("id", session.userId).maybeSingle(),
-      sb.from("leads").select("tags").limit(5000),
       // FAQ templates available to this user (their own + team-shared).
       sb
         .from("faq_templates")
@@ -74,11 +73,7 @@ export default async function LeadDetailPage({ params }: Params) {
         .order("title"),
     ]);
 
-  const tagSuggestionSet = new Set<string>();
-  for (const row of (tagRes.data ?? []) as { tags: string[] | null }[]) {
-    for (const t of row.tags ?? []) tagSuggestionSet.add(t);
-  }
-  const tagSuggestions = Array.from(tagSuggestionSet).sort();
+  const tagSuggestions = await getTagSuggestions();
 
   const { data: amountsData } = await sb
     .from("lead_amounts")
