@@ -68,6 +68,25 @@ export interface FaqTemplateRow {
   updated_at: string;
 }
 
+export interface InvoiceRow {
+  id: string;
+  invoice_number: string;
+  customer_name: string;
+  company_name: string;
+  company_address: string;
+  gst_number: string;
+  pan_number: string | null;
+  product_name: string;
+  total_amount: number;
+  invoice_date: string;
+  created_by: string | null;
+  finance_tracker_id: string | null;
+  sync_status: "pending" | "synced" | "failed";
+  sync_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface NotificationRow {
   id: string;
   user_id: string;

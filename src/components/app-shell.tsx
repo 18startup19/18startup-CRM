@@ -20,6 +20,7 @@ import {
   ChevronRight,
   IndianRupee,
   HelpCircle,
+  FileText,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { logoutAction } from "@/app/actions/auth";
@@ -37,6 +38,7 @@ const memberNav: NavItem[] = [
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/leads/callbacks", label: "My Callbacks", icon: ListChecks },
   { href: "/converted-leads", label: "Converted leads", icon: IndianRupee },
+  { href: "/invoices", label: "Invoices", icon: FileText },
   { href: "/faq", label: "FAQ templates", icon: HelpCircle },
 ];
 
