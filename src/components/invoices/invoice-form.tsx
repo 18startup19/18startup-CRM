@@ -10,13 +10,8 @@ import {
   Textarea,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  createInvoiceAction,
-  updateInvoiceAction,
-  type InvoiceResult,
-} from "@/app/actions/invoices";
+import { createInvoiceAction, type InvoiceResult } from "@/app/actions/invoices";
 import { useToast } from "@/components/ui/toast";
-import type { InvoiceRow } from "@/lib/database.types";
 
 const initial: InvoiceResult = {};
 
@@ -28,24 +23,23 @@ function todayIso(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
-  const editing = Boolean(invoice);
-  const boundAction = editing
-    ? updateInvoiceAction.bind(null, invoice!.id)
-    : createInvoiceAction;
-  const [state, formAction, isPending] = useActionState(boundAction, initial);
+export function InvoiceForm() {
+  const [state, formAction, isPending] = useActionState(
+    createInvoiceAction,
+    initial,
+  );
   const router = useRouter();
   const { toast } = useToast();
 
-  const [gst, setGst] = useState(invoice?.gst_number ?? "");
-  const [pan, setPan] = useState(invoice?.pan_number ?? "");
+  const [gst, setGst] = useState("");
+  const [pan, setPan] = useState("");
 
   useEffect(() => {
     if (state.ok) {
-      toast(editing ? "Invoice updated." : "Invoice created.");
+      toast("Invoice created.");
       router.push("/invoices");
     }
-  }, [state.ok, router, toast, editing]);
+  }, [state.ok, router, toast]);
 
   return (
     <Card className="p-6">
@@ -53,19 +47,14 @@ export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
         <Section title="Customer">
           <Row>
             <Field label="Customer name" required>
-              <Input
-                name="customer_name"
-                required
-                placeholder="e.g. Rahul Verma"
-                defaultValue={invoice?.customer_name}
-              />
+              <Input name="customer_name" required placeholder="e.g. Rahul Verma" />
             </Field>
             <Field label="Program start date (invoice date)" required>
               <Input
                 name="invoice_date"
                 type="date"
                 required
-                defaultValue={invoice?.invoice_date ?? todayIso()}
+                defaultValue={todayIso()}
               />
             </Field>
           </Row>
@@ -74,7 +63,6 @@ export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
               name="company_name"
               required
               placeholder="e.g. Verma Solutions Pvt Ltd"
-              defaultValue={invoice?.company_name}
             />
           </Field>
           <Field label="Company address" required>
@@ -83,7 +71,6 @@ export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
               required
               rows={2}
               placeholder="Street, City, State, PIN"
-              defaultValue={invoice?.company_address}
             />
           </Field>
           <Row>
@@ -115,7 +102,6 @@ export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
               name="product_name"
               required
               placeholder="e.g. 18startup Founders Workshop"
-              defaultValue={invoice?.product_name}
             />
           </Field>
           <Field label="Total amount (₹)" required>
@@ -126,7 +112,6 @@ export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
               min={0}
               required
               placeholder="0.00"
-              defaultValue={invoice?.total_amount}
             />
           </Field>
         </Section>
@@ -142,13 +127,7 @@ export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
             Cancel
           </Button>
           <Button type="submit" size="md" disabled={isPending}>
-            {isPending
-              ? editing
-                ? "Saving…"
-                : "Creating…"
-              : editing
-                ? "Save changes"
-                : "Create invoice"}
+            {isPending ? "Creating…" : "Create invoice"}
           </Button>
         </div>
       </form>

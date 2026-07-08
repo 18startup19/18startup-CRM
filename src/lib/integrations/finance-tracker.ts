@@ -171,6 +171,29 @@ export async function fetchInvoiceFromFinanceTracker(
   }
 }
 
+export async function deleteInvoiceOnFinanceTracker(
+  trackerId: string,
+): Promise<FinanceTrackerResult> {
+  const env = await ftEnv();
+  if ("error" in env) return { ok: false, error: env.error };
+  try {
+    const res = await fetch(`${env.url.replace(/\/$/, "")}/${trackerId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${env.key}` },
+    });
+    // 404 means it's already gone on FT's side — treat as success so the
+    // CRM row can still be cleaned up.
+    if (res.status === 404) return { ok: true };
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function updateInvoiceOnFinanceTracker(
   trackerId: string,
   inv: CreateInput,

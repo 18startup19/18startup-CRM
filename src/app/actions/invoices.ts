@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireSession } from "@/lib/rbac-server";
+import { requireAdmin, requireSession } from "@/lib/rbac-server";
 import {
+  deleteInvoiceOnFinanceTracker,
   fetchInvoiceFromFinanceTracker,
   pushInvoiceToFinanceTracker,
   updateInvoiceOnFinanceTracker,
@@ -127,69 +128,33 @@ export async function createInvoiceAction(
   return { ok: true, invoiceId: (inserted as { id: string }).id };
 }
 
-export async function updateInvoiceAction(
+export async function deleteInvoiceAction(
   id: string,
-  _prev: InvoiceResult,
-  form: FormData,
-): Promise<InvoiceResult> {
-  const session = await requireSession();
+): Promise<{ ok?: boolean; error?: string }> {
+  // Only admins can delete — once created, invoices are otherwise permanent.
+  await requireAdmin();
   const sb = supabaseAdmin();
-
-  const parsed = parseForm(form);
-  if (parsed.error || !parsed.data) return { error: parsed.error };
-  const data = parsed.data;
-
   const { data: existing } = await sb
     .from("invoices")
-    .select("*")
+    .select("id,finance_tracker_id")
     .eq("id", id)
-    .maybeSingle<InvoiceRow>();
+    .maybeSingle<Pick<InvoiceRow, "id" | "finance_tracker_id">>();
   if (!existing) return { error: "Invoice not found." };
 
-  // Look up the original creator so PATCH doesn't wipe the tracker's owner
-  // field (it treats an omitted string differently to a null).
-  let createdByName: string | null = session.name;
-  if (existing.created_by) {
-    const { data: user } = await sb
-      .from("users")
-      .select("name")
-      .eq("id", existing.created_by)
-      .maybeSingle<{ name: string }>();
-    if (user?.name) createdByName = user.name;
+  if (existing.finance_tracker_id) {
+    const res = await deleteInvoiceOnFinanceTracker(existing.finance_tracker_id);
+    if (!res.ok) {
+      return {
+        error: `Finance Tracker delete failed: ${res.error ?? "unknown"}. Delete it manually on the tracker before retrying, or clear the finance_tracker_id.`,
+      };
+    }
   }
 
-  const payload = { ...data, created_by_name: createdByName };
-
-  // Update FT first. If we don't have a tracker id yet (previous sync
-  // failed), fall back to a POST — the tracker will assign a number.
-  const sync = existing.finance_tracker_id
-    ? await updateInvoiceOnFinanceTracker(existing.finance_tracker_id, payload)
-    : await pushInvoiceToFinanceTracker(payload);
-
-  const patch: Record<string, unknown> = {
-    customer_name: data.customer_name,
-    company_name: data.company_name,
-    company_address: data.company_address,
-    gst_number: data.gst_number,
-    pan_number: data.pan_number,
-    product_name: data.product_name,
-    total_amount: data.total_amount,
-    invoice_date: data.invoice_date,
-    status: data.status,
-    updated_at: new Date().toISOString(),
-    sync_status: sync.ok ? "synced" : "failed",
-    sync_error: sync.ok ? null : sync.error ?? "Unknown sync error",
-  };
-  if (sync.trackerId) patch.finance_tracker_id = sync.trackerId;
-  if (sync.invoiceNumber) patch.invoice_number = sync.invoiceNumber;
-  if (sync.pdfUrl) patch.pdf_url = sync.pdfUrl;
-
-  const { error: updErr } = await sb.from("invoices").update(patch).eq("id", id);
-  if (updErr) return { error: updErr.message };
+  const { error } = await sb.from("invoices").delete().eq("id", id);
+  if (error) return { error: error.message };
 
   revalidatePath("/invoices");
-  revalidatePath(`/invoices/${id}/edit`);
-  return { ok: true, invoiceId: id };
+  return { ok: true };
 }
 
 export async function resyncInvoiceAction(

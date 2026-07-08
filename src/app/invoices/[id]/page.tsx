@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Download, Pencil } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
 import { formatDateTime } from "@/lib/utils";
+import { InvoiceDeleteButton } from "@/components/invoices/invoice-delete-button";
 import type { InvoiceRow, UserRow } from "@/lib/database.types";
 
 interface Params {
@@ -77,12 +78,9 @@ export default async function InvoiceDetailPage({ params }: Params) {
                 Download PDF
               </Button>
             </a>
-            <Link href={`/invoices/${data.id}/edit`}>
-              <Button variant="primary" size="sm" type="button">
-                <Pencil size={14} className="inline mr-1 -mt-0.5" />
-                Edit
-              </Button>
-            </Link>
+            {session.role === "admin" && (
+              <InvoiceDeleteButton id={data.id} />
+            )}
           </div>
         </div>
 
