@@ -87,10 +87,14 @@ export async function createInvoiceAction(
   const data = parsed.data;
 
   // Finance Tracker owns the invoice number — call it first, capture the
-  // INV/B2B/#### number it returns, and only then persist. If the tracker
-  // is down we still save the invoice with a placeholder number so the
-  // work isn't lost; the retry button re-syncs and updates the number.
-  const push = await pushInvoiceToFinanceTracker(data);
+  // INV/B2B/#### number + pdf_url it returns, and only then persist. If the
+  // tracker is down we still save the invoice with a placeholder number so
+  // the work isn't lost; the retry button re-syncs and populates the real
+  // number + pdf_url later.
+  const push = await pushInvoiceToFinanceTracker({
+    ...data,
+    created_by_name: session.name,
+  });
 
   const invoice_number = push.ok
     ? push.invoiceNumber ?? `INV-TMP-${Date.now()}`
@@ -111,6 +115,7 @@ export async function createInvoiceAction(
       status: data.status,
       created_by: session.userId,
       finance_tracker_id: push.trackerId ?? null,
+      pdf_url: push.pdfUrl ?? null,
       sync_status: push.ok ? "synced" : "failed",
       sync_error: push.ok ? null : push.error ?? "Unknown sync error",
     })
@@ -127,7 +132,7 @@ export async function updateInvoiceAction(
   _prev: InvoiceResult,
   form: FormData,
 ): Promise<InvoiceResult> {
-  await requireSession();
+  const session = await requireSession();
   const sb = supabaseAdmin();
 
   const parsed = parseForm(form);
@@ -141,19 +146,25 @@ export async function updateInvoiceAction(
     .maybeSingle<InvoiceRow>();
   if (!existing) return { error: "Invoice not found." };
 
+  // Look up the original creator so PATCH doesn't wipe the tracker's owner
+  // field (it treats an omitted string differently to a null).
+  let createdByName: string | null = session.name;
+  if (existing.created_by) {
+    const { data: user } = await sb
+      .from("users")
+      .select("name")
+      .eq("id", existing.created_by)
+      .maybeSingle<{ name: string }>();
+    if (user?.name) createdByName = user.name;
+  }
+
+  const payload = { ...data, created_by_name: createdByName };
+
   // Update FT first. If we don't have a tracker id yet (previous sync
   // failed), fall back to a POST — the tracker will assign a number.
-  let sync: {
-    ok: boolean;
-    trackerId?: string;
-    invoiceNumber?: string;
-    error?: string;
-  };
-  if (existing.finance_tracker_id) {
-    sync = await updateInvoiceOnFinanceTracker(existing.finance_tracker_id, data);
-  } else {
-    sync = await pushInvoiceToFinanceTracker(data);
-  }
+  const sync = existing.finance_tracker_id
+    ? await updateInvoiceOnFinanceTracker(existing.finance_tracker_id, payload)
+    : await pushInvoiceToFinanceTracker(payload);
 
   const patch: Record<string, unknown> = {
     customer_name: data.customer_name,
@@ -171,6 +182,7 @@ export async function updateInvoiceAction(
   };
   if (sync.trackerId) patch.finance_tracker_id = sync.trackerId;
   if (sync.invoiceNumber) patch.invoice_number = sync.invoiceNumber;
+  if (sync.pdfUrl) patch.pdf_url = sync.pdfUrl;
 
   const { error: updErr } = await sb.from("invoices").update(patch).eq("id", id);
   if (updErr) return { error: updErr.message };
@@ -192,6 +204,17 @@ export async function resyncInvoiceAction(
     .maybeSingle<InvoiceRow>();
   if (!data) return { error: "Invoice not found." };
 
+  // Include the original creator's name so a PATCH doesn't wipe it on FT.
+  let createdByName: string | null = null;
+  if (data.created_by) {
+    const { data: user } = await sb
+      .from("users")
+      .select("name")
+      .eq("id", data.created_by)
+      .maybeSingle<{ name: string }>();
+    if (user?.name) createdByName = user.name;
+  }
+
   const payload = {
     customer_name: data.customer_name,
     company_name: data.company_name,
@@ -202,23 +225,30 @@ export async function resyncInvoiceAction(
     total_amount: data.total_amount,
     invoice_date: data.invoice_date,
     status: data.status,
+    created_by_name: createdByName,
   };
 
   const res = data.finance_tracker_id
     ? await updateInvoiceOnFinanceTracker(data.finance_tracker_id, payload)
     : await pushInvoiceToFinanceTracker(payload);
 
-  // If we already have a tracker id but no real invoice number (legacy
-  // "INV-TMP-*" rows created before the response parser dug deep enough),
-  // pull the invoice from FT to grab its number.
-  let invoiceNumberFromFetch: string | undefined;
+  // For legacy rows created before the response parser dug for pdf_url +
+  // invoice_number, pull the invoice from FT to grab the missing bits.
+  let backfill: { invoiceNumber?: string; pdfUrl?: string } = {};
   const looksTemp =
     !data.invoice_number || data.invoice_number.startsWith("INV-TMP-");
   const trackerIdNow = res.trackerId ?? data.finance_tracker_id;
-  if (res.ok && looksTemp && !res.invoiceNumber && trackerIdNow) {
+  if (
+    res.ok &&
+    trackerIdNow &&
+    ((looksTemp && !res.invoiceNumber) || (!data.pdf_url && !res.pdfUrl))
+  ) {
     const fetched = await fetchInvoiceFromFinanceTracker(trackerIdNow);
-    if (fetched.ok && fetched.invoiceNumber) {
-      invoiceNumberFromFetch = fetched.invoiceNumber;
+    if (fetched.ok) {
+      backfill = {
+        invoiceNumber: fetched.invoiceNumber,
+        pdfUrl: fetched.pdfUrl,
+      };
     }
   }
 
@@ -228,8 +258,10 @@ export async function resyncInvoiceAction(
     updated_at: new Date().toISOString(),
   };
   if (res.trackerId) patch.finance_tracker_id = res.trackerId;
-  const finalNumber = res.invoiceNumber ?? invoiceNumberFromFetch;
+  const finalNumber = res.invoiceNumber ?? backfill.invoiceNumber;
   if (finalNumber) patch.invoice_number = finalNumber;
+  const finalPdf = res.pdfUrl ?? backfill.pdfUrl;
+  if (finalPdf) patch.pdf_url = finalPdf;
 
   await sb.from("invoices").update(patch).eq("id", id);
   revalidatePath("/invoices");

@@ -66,9 +66,9 @@ export default async function InvoiceDetailPage({ params }: Params) {
                 variant="outline"
                 size="sm"
                 type="button"
-                disabled={!data.finance_tracker_id}
+                disabled={!data.pdf_url}
                 title={
-                  data.finance_tracker_id
+                  data.pdf_url
                     ? "Download PDF from Finance Tracker"
                     : "PDF is only available once the invoice has synced to the Finance Tracker."
                 }

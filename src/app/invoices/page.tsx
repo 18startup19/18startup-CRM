@@ -304,7 +304,7 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
                         >
                           {inv.sync_status}
                         </Badge>
-                        {inv.sync_status === "synced" && inv.finance_tracker_id && (
+                        {inv.sync_status === "synced" && inv.pdf_url && (
                           <a
                             href={`/api/invoices/${inv.id}/pdf`}
                             target="_blank"

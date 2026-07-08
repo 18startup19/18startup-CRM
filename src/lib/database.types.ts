@@ -82,6 +82,7 @@ export interface InvoiceRow {
   status: "draft" | "issued" | "paid" | "cancelled";
   created_by: string | null;
   finance_tracker_id: string | null;
+  pdf_url: string | null;
   sync_status: "pending" | "synced" | "failed";
   sync_error: string | null;
   created_at: string;

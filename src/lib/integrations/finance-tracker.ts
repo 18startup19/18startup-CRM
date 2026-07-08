@@ -1,8 +1,8 @@
 import type { InvoiceRow } from "../database.types";
 
 // Talk to the Finance Tracker's invoice endpoint. The tracker generates
-// invoice numbers (INV/B2B/#### format), so the CRM stops assigning them and
-// stores whatever the tracker returns.
+// invoice numbers (INV/B2B/#### format), and returns a signed pdf_url that
+// we store and proxy to the browser as a download.
 //
 // FINANCE_TRACKER_API_URL is the FULL endpoint (…/api/external/invoices) —
 // updates PATCH to `${URL}/${finance_tracker_id}`.
@@ -11,6 +11,7 @@ export interface FinanceTrackerResult {
   ok: boolean;
   trackerId?: string;
   invoiceNumber?: string;
+  pdfUrl?: string;
   error?: string;
 }
 
@@ -20,11 +21,12 @@ type CreateInput = Omit<
   | "invoice_number"
   | "created_by"
   | "finance_tracker_id"
+  | "pdf_url"
   | "sync_status"
   | "sync_error"
   | "created_at"
   | "updated_at"
->;
+> & { created_by_name?: string | null };
 
 function buildPayload(inv: CreateInput): Record<string, unknown> {
   // CRM total_amount is gross-of-GST (18%); split into ex-GST unit_price so
@@ -51,15 +53,21 @@ function buildPayload(inv: CreateInput): Record<string, unknown> {
     ],
   };
   if (inv.pan_number) payload.bill_to_pan = inv.pan_number;
+  if (inv.created_by_name) payload.created_by = inv.created_by_name;
   return payload;
 }
 
-// Recursively walk the response and pull the first id + invoice_number we
-// find, regardless of the envelope shape (`body.id`, `body.data.invoice.id`,
-// `body.invoice.number`, etc). Cheap because the payloads are small.
-function extractIds(body: unknown): { trackerId?: string; invoiceNumber?: string } {
+// Recursively walk the response and pull the FT-side id + invoice_number +
+// pdf_url. Trackers vary on envelope shape and integer-vs-string ids, so we
+// accept both string and numeric values for the id.
+function extractIds(body: unknown): {
+  trackerId?: string;
+  invoiceNumber?: string;
+  pdfUrl?: string;
+} {
   let trackerId: string | undefined;
   let invoiceNumber: string | undefined;
+  let pdfUrl: string | undefined;
 
   const walk = (node: unknown, depth = 0): void => {
     if (!node || typeof node !== "object" || depth > 6) return;
@@ -69,8 +77,6 @@ function extractIds(body: unknown): { trackerId?: string; invoiceNumber?: string
     }
     const obj = node as Record<string, unknown>;
     for (const [k, v] of Object.entries(obj)) {
-      // Trackers sometimes return integer PKs — accept both strings and
-      // numbers, so long as the field name matches.
       if (typeof v === "string" || typeof v === "number") {
         if (
           !trackerId &&
@@ -89,14 +95,21 @@ function extractIds(body: unknown): { trackerId?: string; invoiceNumber?: string
         ) {
           invoiceNumber = v;
         }
+        if (
+          !pdfUrl &&
+          typeof v === "string" &&
+          (k === "pdf_url" || k === "pdfUrl")
+        ) {
+          pdfUrl = v;
+        }
       } else if (typeof v === "object") {
         walk(v, depth + 1);
       }
-      if (trackerId && invoiceNumber) return;
+      if (trackerId && invoiceNumber && pdfUrl) return;
     }
   };
   walk(body);
-  return { trackerId, invoiceNumber };
+  return { trackerId, invoiceNumber, pdfUrl };
 }
 
 async function ftEnv(): Promise<{ url: string; key: string } | { error: string }> {
@@ -130,8 +143,8 @@ export async function pushInvoiceToFinanceTracker(
       return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
     }
     const body = await res.json().catch(() => null);
-    const { trackerId, invoiceNumber } = extractIds(body);
-    return { ok: true, trackerId, invoiceNumber };
+    const { trackerId, invoiceNumber, pdfUrl } = extractIds(body);
+    return { ok: true, trackerId, invoiceNumber, pdfUrl };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -151,8 +164,8 @@ export async function fetchInvoiceFromFinanceTracker(
       return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
     }
     const body = await res.json().catch(() => null);
-    const { invoiceNumber } = extractIds(body);
-    return { ok: true, trackerId, invoiceNumber };
+    const { invoiceNumber, pdfUrl } = extractIds(body);
+    return { ok: true, trackerId, invoiceNumber, pdfUrl };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -179,8 +192,8 @@ export async function updateInvoiceOnFinanceTracker(
       return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
     }
     const body = await res.json().catch(() => null);
-    const { invoiceNumber } = extractIds(body);
-    return { ok: true, trackerId, invoiceNumber };
+    const { invoiceNumber, pdfUrl } = extractIds(body);
+    return { ok: true, trackerId, invoiceNumber, pdfUrl };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

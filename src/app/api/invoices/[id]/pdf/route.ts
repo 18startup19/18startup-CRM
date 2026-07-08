@@ -30,7 +30,25 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  if (!data.finance_tracker_id) {
+  const key = process.env.FINANCE_TRACKER_API_KEY;
+  if (!key) {
+    return NextResponse.json(
+      { error: "Finance Tracker env not configured." },
+      { status: 500 },
+    );
+  }
+
+  // Prefer the pdf_url the tracker sent back on create — it's the
+  // canonical, dashboard-matching link. Fall back to constructing one from
+  // the finance_tracker_id for legacy rows that pre-date the pdf_url column.
+  let pdfUrl = data.pdf_url;
+  if (!pdfUrl && data.finance_tracker_id) {
+    const base = process.env.FINANCE_TRACKER_API_URL;
+    if (base) {
+      pdfUrl = `${base.replace(/\/$/, "")}/${data.finance_tracker_id}/pdf`;
+    }
+  }
+  if (!pdfUrl) {
     return NextResponse.json(
       {
         error:
@@ -40,16 +58,6 @@ export async function GET(
     );
   }
 
-  const url = process.env.FINANCE_TRACKER_API_URL;
-  const key = process.env.FINANCE_TRACKER_API_KEY;
-  if (!url || !key) {
-    return NextResponse.json(
-      { error: "Finance Tracker env not configured." },
-      { status: 500 },
-    );
-  }
-
-  const pdfUrl = `${url.replace(/\/$/, "")}/${data.finance_tracker_id}/pdf`;
   const res = await fetch(pdfUrl, {
     headers: { Authorization: `Bearer ${key}` },
   });
