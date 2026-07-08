@@ -54,22 +54,48 @@ function buildPayload(inv: CreateInput): Record<string, unknown> {
   return payload;
 }
 
-// Pull an id + invoice_number out of a few common response shapes so we
-// don't need to know the tracker's exact envelope.
+// Recursively walk the response and pull the first id + invoice_number we
+// find, regardless of the envelope shape (`body.id`, `body.data.invoice.id`,
+// `body.invoice.number`, etc). Cheap because the payloads are small.
 function extractIds(body: unknown): { trackerId?: string; invoiceNumber?: string } {
-  if (!body || typeof body !== "object") return {};
-  const b = body as Record<string, unknown>;
-  const inner =
-    (typeof b.data === "object" && b.data !== null
-      ? (b.data as Record<string, unknown>)
-      : b) ?? b;
-  const trackerId =
-    (inner.id as string | undefined) ??
-    (inner.invoice_id as string | undefined) ??
-    (inner.uuid as string | undefined);
-  const invoiceNumber =
-    (inner.invoice_number as string | undefined) ??
-    (inner.number as string | undefined);
+  let trackerId: string | undefined;
+  let invoiceNumber: string | undefined;
+
+  const walk = (node: unknown, depth = 0): void => {
+    if (!node || typeof node !== "object" || depth > 6) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    for (const [k, v] of Object.entries(obj)) {
+      // Trackers sometimes return integer PKs — accept both strings and
+      // numbers, so long as the field name matches.
+      if (typeof v === "string" || typeof v === "number") {
+        if (
+          !trackerId &&
+          (k === "id" ||
+            k === "invoice_id" ||
+            k === "uuid" ||
+            k === "_id" ||
+            k === "pk")
+        ) {
+          trackerId = String(v);
+        }
+        if (
+          !invoiceNumber &&
+          typeof v === "string" &&
+          (k === "invoice_number" || k === "number" || k === "invoiceNumber")
+        ) {
+          invoiceNumber = v;
+        }
+      } else if (typeof v === "object") {
+        walk(v, depth + 1);
+      }
+      if (trackerId && invoiceNumber) return;
+    }
+  };
+  walk(body);
   return { trackerId, invoiceNumber };
 }
 
@@ -105,6 +131,27 @@ export async function pushInvoiceToFinanceTracker(
     }
     const body = await res.json().catch(() => null);
     const { trackerId, invoiceNumber } = extractIds(body);
+    return { ok: true, trackerId, invoiceNumber };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function fetchInvoiceFromFinanceTracker(
+  trackerId: string,
+): Promise<FinanceTrackerResult> {
+  const env = await ftEnv();
+  if ("error" in env) return { ok: false, error: env.error };
+  try {
+    const res = await fetch(`${env.url.replace(/\/$/, "")}/${trackerId}`, {
+      headers: { Authorization: `Bearer ${env.key}` },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
+    }
+    const body = await res.json().catch(() => null);
+    const { invoiceNumber } = extractIds(body);
     return { ok: true, trackerId, invoiceNumber };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

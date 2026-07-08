@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
 import {
+  fetchInvoiceFromFinanceTracker,
   pushInvoiceToFinanceTracker,
   updateInvoiceOnFinanceTracker,
 } from "@/lib/integrations/finance-tracker";
@@ -15,18 +16,17 @@ export interface InvoiceResult {
   invoiceId?: string;
 }
 
-const STATUSES = ["draft", "issued", "paid", "cancelled"] as const;
-type InvoiceStatus = (typeof STATUSES)[number];
+type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled";
 
 function pickNumber(raw: unknown): number {
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
 }
 
-function pickStatus(raw: unknown): InvoiceStatus {
-  const s = String(raw ?? "").trim().toLowerCase() as InvoiceStatus;
-  return STATUSES.includes(s) ? s : "issued";
-}
+// The CRM only records invoices for payments that have already come in, so
+// every invoice we create is "paid". The field stays in the DB + FT payload
+// so the Finance Tracker treats them the same as its own paid invoices.
+const DEFAULT_STATUS: InvoiceStatus = "paid";
 
 interface ParsedForm {
   customer_name: string;
@@ -50,7 +50,7 @@ function parseForm(form: FormData): { error?: string; data?: ParsedForm } {
   const product_name = String(form.get("product_name") ?? "").trim();
   const total_amount = pickNumber(form.get("total_amount"));
   const invoice_date = String(form.get("invoice_date") ?? "").trim();
-  const status = pickStatus(form.get("status"));
+  const status: InvoiceStatus = DEFAULT_STATUS;
 
   if (!customer_name) return { error: "Customer name is required." };
   if (!company_name) return { error: "Company name is required." };
@@ -208,13 +208,28 @@ export async function resyncInvoiceAction(
     ? await updateInvoiceOnFinanceTracker(data.finance_tracker_id, payload)
     : await pushInvoiceToFinanceTracker(payload);
 
+  // If we already have a tracker id but no real invoice number (legacy
+  // "INV-TMP-*" rows created before the response parser dug deep enough),
+  // pull the invoice from FT to grab its number.
+  let invoiceNumberFromFetch: string | undefined;
+  const looksTemp =
+    !data.invoice_number || data.invoice_number.startsWith("INV-TMP-");
+  const trackerIdNow = res.trackerId ?? data.finance_tracker_id;
+  if (res.ok && looksTemp && !res.invoiceNumber && trackerIdNow) {
+    const fetched = await fetchInvoiceFromFinanceTracker(trackerIdNow);
+    if (fetched.ok && fetched.invoiceNumber) {
+      invoiceNumberFromFetch = fetched.invoiceNumber;
+    }
+  }
+
   const patch: Record<string, unknown> = {
     sync_status: res.ok ? "synced" : "failed",
     sync_error: res.ok ? null : res.error ?? "Unknown sync error",
     updated_at: new Date().toISOString(),
   };
   if (res.trackerId) patch.finance_tracker_id = res.trackerId;
-  if (res.invoiceNumber) patch.invoice_number = res.invoiceNumber;
+  const finalNumber = res.invoiceNumber ?? invoiceNumberFromFetch;
+  if (finalNumber) patch.invoice_number = finalNumber;
 
   await sb.from("invoices").update(patch).eq("id", id);
   revalidatePath("/invoices");

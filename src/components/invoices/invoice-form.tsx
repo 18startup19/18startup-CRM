@@ -7,7 +7,6 @@ import {
   FieldError,
   FieldLabel,
   Input,
-  Select,
   Textarea,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -119,31 +118,17 @@ export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
               defaultValue={invoice?.product_name}
             />
           </Field>
-          <Row>
-            <Field label="Total amount (₹)" required>
-              <Input
-                name="total_amount"
-                type="number"
-                step="0.01"
-                min={0}
-                required
-                placeholder="0.00"
-                defaultValue={invoice?.total_amount}
-              />
-            </Field>
-            <Field label="Status" required>
-              <Select
-                name="status"
-                required
-                defaultValue={invoice?.status ?? "issued"}
-              >
-                <option value="draft">Draft</option>
-                <option value="issued">Issued</option>
-                <option value="paid">Paid</option>
-                <option value="cancelled">Cancelled</option>
-              </Select>
-            </Field>
-          </Row>
+          <Field label="Total amount (₹)" required>
+            <Input
+              name="total_amount"
+              type="number"
+              step="0.01"
+              min={0}
+              required
+              placeholder="0.00"
+              defaultValue={invoice?.total_amount}
+            />
+          </Field>
         </Section>
 
         {state.error && (
