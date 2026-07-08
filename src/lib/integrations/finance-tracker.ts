@@ -1,46 +1,46 @@
 import type { InvoiceRow } from "../database.types";
 
-// Push a CRM invoice to the Finance Tracker app. The tracker is another
-// service; we hit its /api/invoices endpoint with a bearer token. Both env
-// vars must be set for the sync to actually fire; without them we soft-skip
-// so dev environments still work.
+// Talk to the Finance Tracker's invoice endpoint. The tracker generates
+// invoice numbers (INV/B2B/#### format), so the CRM stops assigning them and
+// stores whatever the tracker returns.
 //
-// Adjust the payload shape here if the Finance Tracker expects different
-// field names — this is the ONLY spot the mapping lives.
+// FINANCE_TRACKER_API_URL is the FULL endpoint (…/api/external/invoices) —
+// updates PATCH to `${URL}/${finance_tracker_id}`.
 
 export interface FinanceTrackerResult {
   ok: boolean;
   trackerId?: string;
+  invoiceNumber?: string;
   error?: string;
 }
 
-export async function syncInvoiceToFinanceTracker(
-  inv: InvoiceRow,
-): Promise<FinanceTrackerResult> {
-  const url = process.env.FINANCE_TRACKER_API_URL;
-  const key = process.env.FINANCE_TRACKER_API_KEY;
-  if (!url || !key) {
-    return {
-      ok: false,
-      error: "Finance Tracker env not configured (FINANCE_TRACKER_API_URL/API_KEY).",
-    };
-  }
+type CreateInput = Omit<
+  InvoiceRow,
+  | "id"
+  | "invoice_number"
+  | "created_by"
+  | "finance_tracker_id"
+  | "sync_status"
+  | "sync_error"
+  | "created_at"
+  | "updated_at"
+>;
 
-  // Match the Finance Tracker schema. CRM totals are gross-of-GST (18%);
-  // we split them into ex-GST unit_price + gst_rate so the Finance Tracker
-  // recomputes the same total with a proper tax breakdown.
+function buildPayload(inv: CreateInput): Record<string, unknown> {
+  // CRM total_amount is gross-of-GST (18%); split into ex-GST unit_price so
+  // the tracker recomputes the same customer-facing total with a proper
+  // subtotal + tax breakdown.
   const GST_RATE = 18;
   const grossTotal = Number(inv.total_amount);
   const unitPrice = Number((grossTotal / (1 + GST_RATE / 100)).toFixed(2));
 
   const payload: Record<string, unknown> = {
-    invoice_number: inv.invoice_number,
     invoice_date: inv.invoice_date,
     payee_name: inv.customer_name,
     company_name: inv.company_name,
     bill_to_address: inv.company_address,
     bill_to_gst: inv.gst_number,
-    status: "issued",
+    status: inv.status,
     line_items: [
       {
         description: inv.product_name,
@@ -51,26 +51,89 @@ export async function syncInvoiceToFinanceTracker(
     ],
   };
   if (inv.pan_number) payload.bill_to_pan = inv.pan_number;
+  return payload;
+}
+
+// Pull an id + invoice_number out of a few common response shapes so we
+// don't need to know the tracker's exact envelope.
+function extractIds(body: unknown): { trackerId?: string; invoiceNumber?: string } {
+  if (!body || typeof body !== "object") return {};
+  const b = body as Record<string, unknown>;
+  const inner =
+    (typeof b.data === "object" && b.data !== null
+      ? (b.data as Record<string, unknown>)
+      : b) ?? b;
+  const trackerId =
+    (inner.id as string | undefined) ??
+    (inner.invoice_id as string | undefined) ??
+    (inner.uuid as string | undefined);
+  const invoiceNumber =
+    (inner.invoice_number as string | undefined) ??
+    (inner.number as string | undefined);
+  return { trackerId, invoiceNumber };
+}
+
+async function ftEnv(): Promise<{ url: string; key: string } | { error: string }> {
+  const url = process.env.FINANCE_TRACKER_API_URL;
+  const key = process.env.FINANCE_TRACKER_API_KEY;
+  if (!url || !key) {
+    return {
+      error: "Finance Tracker env not configured (FINANCE_TRACKER_API_URL/API_KEY).",
+    };
+  }
+  return { url, key };
+}
+
+export async function pushInvoiceToFinanceTracker(
+  inv: CreateInput,
+): Promise<FinanceTrackerResult> {
+  const env = await ftEnv();
+  if ("error" in env) return { ok: false, error: env.error };
 
   try {
-    // FINANCE_TRACKER_API_URL is the full endpoint (e.g. .../api/external/invoices)
-    // — we don't append anything to it.
-    const res = await fetch(url, {
+    const res = await fetch(env.url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${key}`,
+        Authorization: `Bearer ${env.key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(buildPayload(inv)),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 200)}` };
+      return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
     }
-    const body = (await res.json().catch(() => null)) as
-      | { id?: string; invoice_id?: string }
-      | null;
-    return { ok: true, trackerId: body?.id ?? body?.invoice_id ?? undefined };
+    const body = await res.json().catch(() => null);
+    const { trackerId, invoiceNumber } = extractIds(body);
+    return { ok: true, trackerId, invoiceNumber };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function updateInvoiceOnFinanceTracker(
+  trackerId: string,
+  inv: CreateInput,
+): Promise<FinanceTrackerResult> {
+  const env = await ftEnv();
+  if ("error" in env) return { ok: false, error: env.error };
+
+  try {
+    const res = await fetch(`${env.url.replace(/\/$/, "")}/${trackerId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${env.key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildPayload(inv)),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
+    }
+    const body = await res.json().catch(() => null);
+    const { invoiceNumber } = extractIds(body);
+    return { ok: true, trackerId, invoiceNumber };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

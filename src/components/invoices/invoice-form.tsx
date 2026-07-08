@@ -1,11 +1,23 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, FieldError, FieldLabel, Input, Textarea } from "@/components/ui/card";
+import {
+  Card,
+  FieldError,
+  FieldLabel,
+  Input,
+  Select,
+  Textarea,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { createInvoiceAction, type InvoiceResult } from "@/app/actions/invoices";
+import {
+  createInvoiceAction,
+  updateInvoiceAction,
+  type InvoiceResult,
+} from "@/app/actions/invoices";
 import { useToast } from "@/components/ui/toast";
+import type { InvoiceRow } from "@/lib/database.types";
 
 const initial: InvoiceResult = {};
 
@@ -17,17 +29,24 @@ function todayIso(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export function InvoiceForm() {
-  const [state, formAction, isPending] = useActionState(createInvoiceAction, initial);
+export function InvoiceForm({ invoice }: { invoice?: InvoiceRow }) {
+  const editing = Boolean(invoice);
+  const boundAction = editing
+    ? updateInvoiceAction.bind(null, invoice!.id)
+    : createInvoiceAction;
+  const [state, formAction, isPending] = useActionState(boundAction, initial);
   const router = useRouter();
   const { toast } = useToast();
 
+  const [gst, setGst] = useState(invoice?.gst_number ?? "");
+  const [pan, setPan] = useState(invoice?.pan_number ?? "");
+
   useEffect(() => {
     if (state.ok) {
-      toast("Invoice created.");
+      toast(editing ? "Invoice updated." : "Invoice created.");
       router.push("/invoices");
     }
-  }, [state.ok, router, toast]);
+  }, [state.ok, router, toast, editing]);
 
   return (
     <Card className="p-6">
@@ -35,19 +54,29 @@ export function InvoiceForm() {
         <Section title="Customer">
           <Row>
             <Field label="Customer name" required>
-              <Input name="customer_name" required placeholder="e.g. Rahul Verma" />
+              <Input
+                name="customer_name"
+                required
+                placeholder="e.g. Rahul Verma"
+                defaultValue={invoice?.customer_name}
+              />
             </Field>
             <Field label="Program start date (invoice date)" required>
               <Input
                 name="invoice_date"
                 type="date"
                 required
-                defaultValue={todayIso()}
+                defaultValue={invoice?.invoice_date ?? todayIso()}
               />
             </Field>
           </Row>
           <Field label="Company name" required>
-            <Input name="company_name" required placeholder="e.g. Verma Solutions Pvt Ltd" />
+            <Input
+              name="company_name"
+              required
+              placeholder="e.g. Verma Solutions Pvt Ltd"
+              defaultValue={invoice?.company_name}
+            />
           </Field>
           <Field label="Company address" required>
             <Textarea
@@ -55,6 +84,7 @@ export function InvoiceForm() {
               required
               rows={2}
               placeholder="Street, City, State, PIN"
+              defaultValue={invoice?.company_address}
             />
           </Field>
           <Row>
@@ -62,30 +92,58 @@ export function InvoiceForm() {
               <Input
                 name="gst_number"
                 required
-                placeholder="22AAAAA0000A1Z5"
-                autoCapitalize="characters"
+                placeholder="22ABCDE1234F1Z5"
+                value={gst}
+                onChange={(e) => setGst(e.target.value.toUpperCase())}
+                className="uppercase"
               />
             </Field>
             <Field label="PAN number (optional)">
-              <Input name="pan_number" placeholder="AAAAA0000A" autoCapitalize="characters" />
+              <Input
+                name="pan_number"
+                placeholder="ABCDE1234F"
+                value={pan}
+                onChange={(e) => setPan(e.target.value.toUpperCase())}
+                className="uppercase"
+              />
             </Field>
           </Row>
         </Section>
 
         <Section title="Product">
           <Field label="Product name" required>
-            <Input name="product_name" required placeholder="e.g. 18startup Founders Workshop" />
-          </Field>
-          <Field label="Total amount (₹)" required>
             <Input
-              name="total_amount"
-              type="number"
-              step="0.01"
-              min={0}
+              name="product_name"
               required
-              placeholder="0.00"
+              placeholder="e.g. 18startup Founders Workshop"
+              defaultValue={invoice?.product_name}
             />
           </Field>
+          <Row>
+            <Field label="Total amount (₹)" required>
+              <Input
+                name="total_amount"
+                type="number"
+                step="0.01"
+                min={0}
+                required
+                placeholder="0.00"
+                defaultValue={invoice?.total_amount}
+              />
+            </Field>
+            <Field label="Status" required>
+              <Select
+                name="status"
+                required
+                defaultValue={invoice?.status ?? "issued"}
+              >
+                <option value="draft">Draft</option>
+                <option value="issued">Issued</option>
+                <option value="paid">Paid</option>
+                <option value="cancelled">Cancelled</option>
+              </Select>
+            </Field>
+          </Row>
         </Section>
 
         {state.error && (
@@ -99,7 +157,13 @@ export function InvoiceForm() {
             Cancel
           </Button>
           <Button type="submit" size="md" disabled={isPending}>
-            {isPending ? "Creating…" : "Create invoice"}
+            {isPending
+              ? editing
+                ? "Saving…"
+                : "Creating…"
+              : editing
+                ? "Save changes"
+                : "Create invoice"}
           </Button>
         </div>
       </form>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,8 +79,10 @@ export default async function InvoicesPage() {
                 <Th>Product</Th>
                 <Th>Amount</Th>
                 <Th>Invoice date</Th>
+                <Th>Status</Th>
                 <Th>Created by</Th>
                 <Th>Finance Tracker</Th>
+                <Th />
               </tr>
             </thead>
             <tbody>
@@ -90,7 +92,7 @@ export default async function InvoicesPage() {
                   className="border-b border-brand-border last:border-none hover:bg-brand-bg/40"
                 >
                   <Td className="font-mono text-[12.5px] font-bold text-brand-charcoal">
-                    {inv.invoice_number}
+                    {inv.invoice_number ?? "—"}
                   </Td>
                   <Td className="font-semibold">{inv.customer_name}</Td>
                   <Td className="text-brand-dark-text">{inv.company_name}</Td>
@@ -106,6 +108,21 @@ export default async function InvoicesPage() {
                           year: "numeric",
                         })
                       : "—"}
+                  </Td>
+                  <Td>
+                    <Badge
+                      color={
+                        inv.status === "paid"
+                          ? "green"
+                          : inv.status === "cancelled"
+                            ? "red"
+                            : inv.status === "draft"
+                              ? "slate"
+                              : "amber"
+                      }
+                    >
+                      {inv.status}
+                    </Badge>
                   </Td>
                   <Td className="text-brand-dark-text">
                     {inv.created_by ? usersById.get(inv.created_by) ?? "—" : "—"}
@@ -136,12 +153,21 @@ export default async function InvoicesPage() {
                       </div>
                     )}
                   </Td>
+                  <Td>
+                    <Link
+                      href={`/invoices/${inv.id}/edit`}
+                      className="inline-flex items-center gap-1 text-[12px] font-bold text-brand-orange hover:text-brand-orange-dark"
+                    >
+                      <Pencil size={11} />
+                      Edit
+                    </Link>
+                  </Td>
                 </tr>
               ))}
               {invoices.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={10}
                     className="px-6 py-16 text-center text-brand-dark-text"
                   >
                     No invoices yet. Click <b>Create new invoice</b> to add one.
@@ -156,7 +182,7 @@ export default async function InvoicesPage() {
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return (
     <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">
       {children}

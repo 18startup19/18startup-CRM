@@ -70,7 +70,7 @@ export interface FaqTemplateRow {
 
 export interface InvoiceRow {
   id: string;
-  invoice_number: string;
+  invoice_number: string | null;
   customer_name: string;
   company_name: string;
   company_address: string;
@@ -79,6 +79,7 @@ export interface InvoiceRow {
   product_name: string;
   total_amount: number;
   invoice_date: string;
+  status: "draft" | "issued" | "paid" | "cancelled";
   created_by: string | null;
   finance_tracker_id: string | null;
   sync_status: "pending" | "synced" | "failed";
