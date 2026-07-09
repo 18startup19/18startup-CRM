@@ -55,8 +55,8 @@ export function CallbacksView({
         <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
           Upcoming callbacks ({upcomingLeads.length})
         </h2>
-        <Card className="p-0 overflow-hidden">
-          <table className="w-full text-[14px]">
+        <Card className="p-0 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-[14px]">
             <thead className="bg-brand-bg border-b border-brand-border text-left">
               <tr>
                 <Th>Name</Th>
@@ -109,8 +109,8 @@ export function CallbacksView({
         <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
           Call log ({calls.length})
         </h2>
-        <Card className="p-0 overflow-hidden">
-          <table className="w-full text-[14px]">
+        <Card className="p-0 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-[14px]">
             <thead className="bg-brand-bg border-b border-brand-border text-left">
               <tr>
                 <Th>Lead</Th>

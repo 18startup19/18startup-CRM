@@ -348,8 +348,8 @@ async function TeamComparison({ from, to }: { from: string; to: string }) {
       <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
         Team performance
       </h2>
-      <Card className="p-0 overflow-hidden">
-        <table className="w-full text-[14px]">
+      <Card className="p-0 overflow-x-auto">
+        <table className="w-full min-w-[720px] text-[14px]">
           <thead className="bg-brand-bg border-b border-brand-border text-left">
             <tr>
               <th className="px-6 py-3 text-[11px] font-bold uppercase tracking-[0.8px] text-brand-dark-text">

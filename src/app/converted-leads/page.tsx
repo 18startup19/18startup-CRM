@@ -206,7 +206,7 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
             <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
               By team member
             </h2>
-            <Card className="p-0 overflow-hidden">
+            <Card className="p-0 overflow-x-auto">
               <table className="w-full text-[14px]">
                 <thead className="bg-brand-bg border-b border-brand-border text-left">
                   <tr>
@@ -244,8 +244,8 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
           <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
             Payment log
           </h2>
-          <Card className="p-0 overflow-hidden">
-            <table className="w-full text-[14px]">
+          <Card className="p-0 overflow-x-auto">
+            <table className="w-full min-w-[720px] text-[14px]">
               <thead className="bg-brand-bg border-b border-brand-border text-left">
                 <tr>
                   <Th>Lead</Th>
