@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
-import { Plus, Upload, Search, X } from "lucide-react";
+import { Plus, Upload, Search, X, SlidersHorizontal } from "lucide-react";
 import type {
   CustomFieldRow,
   LeadRow,
@@ -124,6 +124,9 @@ export function KanbanBoard({
   const [customizing, setCustomizing] = useState(false);
   const [cardFields, setCardFields] = useState<string[]>(initialCardFields);
   const [addingPipeline, setAddingPipeline] = useState(false);
+  // On mobile the full toolbar collapses behind an "Options" toggle so only
+  // the New lead button + the toggle stay visible above the columns.
+  const [toolbarOpen, setToolbarOpen] = useState(false);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -307,7 +310,28 @@ export function KanbanBoard({
       {/* Fixed top toolbar area. The lead-card scroll region is the flex-1
           block below — the toolbar and per-column stage headers stay put. */}
       <div className="shrink-0">
-      <div className="flex items-center gap-3 mb-5">
+      {/* Mobile-only action row: New lead + Options toggle. Hidden on md+. */}
+      <div className="md:hidden flex items-center gap-2 mb-3">
+        <Link href="/leads/new" className="flex-1">
+          <Button variant="primary" size="sm" className="w-full">
+            <Plus size={14} className="inline mr-1 -mt-0.5" />
+            New lead
+          </Button>
+        </Link>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setToolbarOpen((v) => !v)}
+        >
+          <SlidersHorizontal size={14} className="inline mr-1 -mt-0.5" />
+          {toolbarOpen ? "Hide" : "Options"}
+        </Button>
+      </div>
+
+      {/* Full toolbar — always visible on md+, collapsed on mobile unless
+          the user opens it via the Options button. */}
+      <div className={toolbarOpen ? "block" : "hidden md:block"}>
+      <div className="flex flex-col items-end gap-2 mb-3 md:flex-row md:items-center md:gap-3 md:mb-5 md:flex-wrap">
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-bold uppercase tracking-[0.6px] text-brand-dark-text">
             Pipeline
@@ -333,8 +357,9 @@ export function KanbanBoard({
           />
         )}
 
-        <div className="ml-auto flex items-center gap-2">
-          <Link href="/leads/new">
+        <div className="md:ml-auto flex items-center gap-2 flex-wrap">
+          {/* Desktop-only — the mobile action bar above renders its own New lead. */}
+          <Link href="/leads/new" className="hidden md:inline-flex">
             <Button variant="primary" size="sm">
               <Plus size={14} className="inline mr-1 -mt-0.5" />
               New lead
@@ -394,7 +419,7 @@ export function KanbanBoard({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
+      <div className="flex flex-col items-end gap-2 mb-3 md:flex-row md:items-center md:gap-2 md:mb-4 md:flex-wrap">
         <select
           value={filters.owner}
           onChange={(e) => updateFilter({ owner: e.target.value })}
@@ -427,7 +452,7 @@ export function KanbanBoard({
           />
           DNC only
         </label>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="md:ml-auto flex items-center gap-2">
           <span className="text-[12px] font-bold uppercase tracking-[0.4px] text-brand-dark-text">
             Sort
           </span>
@@ -485,6 +510,7 @@ export function KanbanBoard({
           ))}
         </div>
       )}
+      </div>
       </div>
 
       {stages.length === 0 ? (
