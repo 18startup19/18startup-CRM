@@ -21,6 +21,8 @@ import {
   IndianRupee,
   HelpCircle,
   FileText,
+  Menu,
+  X,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { logoutAction } from "@/app/actions/auth";
@@ -67,11 +69,18 @@ export function AppShell({
   const pathname = usePathname();
   const nav = section === "admin" ? adminNav : memberNav;
 
+  // Desktop collapse persists to localStorage. Mobile drawer is transient —
+  // opens over the content, closes on nav or scrim tap.
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
     if (stored === "1") setCollapsed(true);
   }, []);
+  // Close the drawer whenever the route changes.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   function toggleCollapsed() {
     setCollapsed((v) => {
@@ -81,25 +90,51 @@ export function AppShell({
     });
   }
 
+  const asideClasses = clsx(
+    // Desktop: static column that pushes content right.
+    "md:static md:translate-x-0 md:shrink-0",
+    "bg-brand-charcoal text-white flex flex-col p-3 sidebar-scroll overflow-y-auto transition-[width,transform] duration-200",
+    // Mobile: off-canvas drawer slid in via translate.
+    "fixed top-0 bottom-0 left-0 z-50 w-[260px]",
+    mobileOpen ? "translate-x-0" : "-translate-x-full",
+    // Desktop width still controlled by the collapse toggle.
+    collapsed ? "md:w-[68px]" : "md:w-[240px]",
+  );
+
   return (
     <div className="h-screen flex bg-brand-bg overflow-hidden">
-      <aside
-        className={clsx(
-          "shrink-0 bg-brand-charcoal text-white flex flex-col p-3 sidebar-scroll overflow-y-auto transition-[width] duration-200",
-          collapsed ? "w-[68px]" : "w-[240px]",
-        )}
-      >
+      {/* Scrim behind the mobile drawer */}
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        />
+      )}
+
+      <aside className={asideClasses}>
         <div
           className={clsx(
             "flex items-center mb-6",
-            collapsed ? "justify-center" : "justify-between pl-2",
+            collapsed ? "md:justify-center justify-between pl-2" : "justify-between pl-2",
           )}
         >
-          {!collapsed && <Logo onDark size="md" />}
+          {(!collapsed || mobileOpen) && <Logo onDark size="md" />}
+          {/* Mobile close button */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="md:hidden p-1.5 rounded-[8px] text-white/70 hover:text-white hover:bg-white/10"
+            title="Close menu"
+          >
+            <X size={16} />
+          </button>
+          {/* Desktop collapse toggle */}
           <button
             type="button"
             onClick={toggleCollapsed}
-            className="p-1.5 rounded-[8px] text-white/70 hover:text-white hover:bg-white/10"
+            className="hidden md:inline-flex p-1.5 rounded-[8px] text-white/70 hover:text-white hover:bg-white/10"
             title={collapsed ? "Expand" : "Collapse"}
           >
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -112,21 +147,22 @@ export function AppShell({
               pathname === item.href ||
               (item.href !== "/admin" && pathname.startsWith(item.href));
             const Icon = item.icon;
+            const compact = collapsed && !mobileOpen;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                title={collapsed ? item.label : undefined}
+                title={compact ? item.label : undefined}
                 className={clsx(
                   "flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[14px] font-semibold transition-colors",
-                  collapsed && "justify-center px-0",
+                  compact && "md:justify-center md:px-0",
                   active
                     ? "bg-brand-orange text-white"
                     : "text-white/70 hover:text-white hover:bg-white/5",
                 )}
               >
                 <Icon size={16} />
-                {!collapsed && item.label}
+                {!compact && item.label}
               </Link>
             );
           })}
@@ -134,33 +170,33 @@ export function AppShell({
           {session.role === "admin" && section === "leads" && (
             <Link
               href="/admin"
-              title={collapsed ? "Admin console" : undefined}
+              title={collapsed && !mobileOpen ? "Admin console" : undefined}
               className={clsx(
                 "mt-4 flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[14px] font-semibold text-white/70 hover:text-white hover:bg-white/5",
-                collapsed && "justify-center px-0",
+                collapsed && !mobileOpen && "md:justify-center md:px-0",
               )}
             >
               <Settings size={16} />
-              {!collapsed && "Admin console"}
+              {(!collapsed || mobileOpen) && "Admin console"}
             </Link>
           )}
           {session.role === "admin" && section === "admin" && (
             <Link
               href="/leads/kanban"
-              title={collapsed ? "Back to leads" : undefined}
+              title={collapsed && !mobileOpen ? "Back to leads" : undefined}
               className={clsx(
                 "mt-4 flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[14px] font-semibold text-white/70 hover:text-white hover:bg-white/5",
-                collapsed && "justify-center px-0",
+                collapsed && !mobileOpen && "md:justify-center md:px-0",
               )}
             >
               <LayoutGrid size={16} />
-              {!collapsed && "Back to leads"}
+              {(!collapsed || mobileOpen) && "Back to leads"}
             </Link>
           )}
         </nav>
 
         <div className="mt-6 pt-5 border-t border-white/10">
-          {!collapsed && (
+          {(!collapsed || mobileOpen) && (
             <div className="px-3 mb-3">
               <div className="text-[13px] font-bold text-white truncate">{session.name}</div>
               <div className="text-[11px] text-white/50 truncate">{session.email}</div>
@@ -169,20 +205,34 @@ export function AppShell({
           <form action={logoutAction}>
             <button
               type="submit"
-              title={collapsed ? "Sign out" : undefined}
+              title={collapsed && !mobileOpen ? "Sign out" : undefined}
               className={clsx(
                 "w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[13px] font-semibold text-white/70 hover:text-white hover:bg-white/5",
-                collapsed && "justify-center px-0",
+                collapsed && !mobileOpen && "md:justify-center md:px-0",
               )}
             >
               <LogOut size={14} />
-              {!collapsed && "Sign out"}
+              {(!collapsed || mobileOpen) && "Sign out"}
             </button>
           </form>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden h-screen">{children}</main>
+      <main className="flex-1 overflow-y-auto overflow-x-hidden h-screen">
+        {/* Mobile top bar — hamburger + logo. Only shown on <md. */}
+        <div className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 bg-brand-charcoal text-white shadow">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="p-1.5 rounded-[8px] hover:bg-white/10"
+            title="Open menu"
+          >
+            <Menu size={18} />
+          </button>
+          <Logo onDark size="sm" />
+        </div>
+        {children}
+      </main>
     </div>
   );
 }

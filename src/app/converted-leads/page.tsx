@@ -183,7 +183,7 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard
             icon={<IndianRupee size={14} />}
             label="Amount collected"

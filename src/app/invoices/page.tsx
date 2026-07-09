@@ -154,7 +154,7 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
           </Link>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard
             icon={<FileText size={14} />}
             label="Invoices"

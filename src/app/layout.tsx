@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Lato } from "next/font/google";
 import "./globals.css";
@@ -14,6 +14,12 @@ const lato = Lato({
 export const metadata: Metadata = {
   title: "18startup CRM",
   description: "Dialer-first outbound sales CRM — 18startup",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({

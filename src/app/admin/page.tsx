@@ -42,7 +42,7 @@ export default async function AdminHome() {
           <Stat label="Custom fields" value={c.fields} />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {tiles.map((t) => (
             <Link key={t.href} href={t.href}>
               <Card className="p-6 hover:border-brand-orange transition-colors">

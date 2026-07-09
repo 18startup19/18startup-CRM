@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Send, MessageSquare, User, Search, Paperclip } from "lucide-react";
+import { Send, MessageSquare, User, Search, Paperclip, ArrowLeft } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/loading-screen";
@@ -82,8 +82,14 @@ export function WhatsAppInbox({
 
   return (
     <div className="flex h-[calc(100vh-97px)] border-t border-brand-border">
-      {/* LEFT PANE — conversation list */}
-      <div className="w-[340px] shrink-0 border-r border-brand-border bg-white flex flex-col">
+      {/* LEFT PANE — conversation list. On mobile, hidden once a
+          conversation is opened so the chat gets the full viewport. */}
+      <div
+        className={
+          "md:w-[340px] md:shrink-0 md:flex md:flex-col border-r border-brand-border bg-white flex-col w-full " +
+          (selectedLead ? "hidden" : "flex")
+        }
+      >
         <div className="p-3 border-b border-brand-border">
           <div className="relative">
             <Search
@@ -153,8 +159,14 @@ export function WhatsAppInbox({
         </div>
       </div>
 
-      {/* RIGHT PANE — thread + compose */}
-      <div className="flex-1 flex flex-col bg-brand-bg">
+      {/* RIGHT PANE — thread + compose. Hidden on mobile until a
+          conversation is selected. */}
+      <div
+        className={
+          "flex-1 flex-col bg-brand-bg md:flex " +
+          (selectedLead ? "flex" : "hidden md:flex")
+        }
+      >
         {pending && pendingLeadId ? (
           <LoadingScreen message="Loading conversation…" />
         ) : !selectedLead ? (
@@ -288,7 +300,15 @@ function ChatView({
       {/* header */}
       <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-brand-border">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-full bg-brand-orange/10 flex items-center justify-center text-brand-orange">
+          <button
+            type="button"
+            onClick={() => router.push("/whatsapp")}
+            className="md:hidden p-1.5 -ml-1 rounded-[8px] text-brand-dark-text hover:text-brand-charcoal hover:bg-brand-bg"
+            title="Back to conversations"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div className="w-9 h-9 rounded-full bg-brand-orange/10 flex items-center justify-center text-brand-orange shrink-0">
             <User size={16} />
           </div>
           <div className="min-w-0">

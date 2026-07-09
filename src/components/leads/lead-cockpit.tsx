@@ -244,7 +244,7 @@ export function LeadCockpit({
         </div>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_400px] gap-6 p-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] gap-6 p-4 md:p-8 items-start">
         {/* LEFT: single card with all tabs at the top */}
         <Card className="p-0 overflow-hidden">
           <div className="flex border-b border-brand-border overflow-x-auto">

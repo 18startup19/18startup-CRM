@@ -46,7 +46,7 @@ export default async function IntegrationsPage() {
         title="Integrations"
         subtitle="What each channel is currently sending through. Configure via Vercel environment variables."
       />
-      <div className="p-8 grid grid-cols-2 gap-4">
+      <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="p-6">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-brand-charcoal">Email</h3>

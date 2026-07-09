@@ -113,7 +113,7 @@ export default async function InvoiceDetailPage({ params }: Params) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <SummaryBlock label="Bill to">
               <div className="font-bold text-brand-charcoal text-[15px]">
                 {data.customer_name}
