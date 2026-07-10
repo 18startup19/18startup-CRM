@@ -16,9 +16,12 @@ export type LeadSource =
   | "manual"
   | "csv"
   | "web_form"
+  | "webflow"
+  | "razorpay"
   | "fb_ads"
   | "indiamart"
   | "missed_call"
+  | "chatbot"
   | "api";
 export type CommChannel = "call" | "whatsapp" | "email";
 export type CommDirection = "inbound" | "outbound";
@@ -54,7 +57,57 @@ export interface LeadAmountRow {
   actor_id: string | null;
   amount: number;
   note: string | null;
+  cohort_number: string | null;
   created_at: string;
+}
+
+export interface CohortRow {
+  id: string;
+  number: string;
+  label: string | null;
+  lms_cohort_id: string | null;
+  lms_whatsapp_template_id: string | null;
+  lms_email_template_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadRoutingRuleRow {
+  id: string;
+  source: "razorpay" | "webflow";
+  match_value: string;
+  stage_id: string;
+  is_active: boolean;
+  label: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntakeSettingsRow {
+  id: number;
+  fallback_stage_id: string | null;
+  updated_at: string;
+}
+
+export interface LmsSettingsRow {
+  id: number;
+  whatsapp_template_id: string | null;
+  email_template_id: string | null;
+  updated_at: string;
+}
+
+export interface LeadLmsOnboardingRow {
+  id: string;
+  lead_id: string;
+  cohort_id: string;
+  status: "pending" | "sent" | "failed";
+  lms_user_id: string | null;
+  actor_id: string | null;
+  error: string | null;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface FaqTemplateRow {
@@ -141,6 +194,7 @@ export interface LeadRow {
   custom: Record<string, unknown>;
   tags: string[];
   is_dnc: boolean;
+  total_fee: number | null;
   created_at: string;
   updated_at: string;
 }

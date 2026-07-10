@@ -79,9 +79,11 @@ interface Props {
     id: string;
     amount: number;
     note: string | null;
+    cohort_number: string | null;
     created_at: string;
   }[];
   amountTotal: number;
+  cohorts: { number: string; label: string | null }[];
 }
 
 type TabKey = "timeline" | "notes" | "history";
@@ -103,6 +105,7 @@ export function LeadCockpit({
   lastCallLog,
   amounts,
   amountTotal,
+  cohorts,
 }: Props) {
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -394,7 +397,13 @@ export function LeadCockpit({
             )}
           </Card>
 
-          <AddAmountCard leadId={lead.id} total={amountTotal} entries={amounts} />
+          <AddAmountCard
+            leadId={lead.id}
+            total={amountTotal}
+            totalFee={lead.total_fee ?? null}
+            entries={amounts}
+            cohorts={cohorts}
+          />
 
           <Card className="p-6">
             <form
@@ -402,12 +411,16 @@ export function LeadCockpit({
                 const res = await updateLeadAction(lead.id, fd);
                 if (res && "ok" in res) toast("Changes saved.");
               }}
-              onChange={(e) => {
+              onBlur={(e) => {
+                // Save only when focus leaves the currently-edited field.
+                // React's blur bubbles, so this fires per-field — clicking
+                // away or tabbing out commits. Mid-keystroke changes never
+                // fire the action so a half-typed phone/email is safe.
                 const form = e.currentTarget;
                 if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
                 autoSaveTimer.current = setTimeout(() => {
                   form.requestSubmit();
-                }, 900);
+                }, 0);
               }}
               className="flex flex-col gap-4"
             >
@@ -607,6 +620,45 @@ function humanizeActivity(
       return `${actor} imported this lead from CSV.`;
     case "converted":
       return `${actor} converted this lead.`;
+    case "lms_onboarded": {
+      const cohort =
+        typeof p.cohort_number === "string" ? `Cohort ${p.cohort_number}` : "the LMS";
+      const auto = p.trigger === "auto";
+      const failed = p.status === "failed";
+      const verb = failed
+        ? auto
+          ? "tried to auto-onboard"
+          : "tried to onboard"
+        : auto
+          ? "auto-onboarded"
+          : "onboarded";
+      const bits: string[] = [];
+      // Success details: which channels landed
+      if (!failed) {
+        const landed: string[] = [];
+        if (!p.wa_skipped && !p.wa_error) landed.push("WhatsApp sent");
+        if (!p.email_skipped && !p.email_error) landed.push("email sent");
+        if (!p.enroll_skipped && !p.enroll_error) landed.push("LMS enrolled");
+        if (landed.length) bits.push(landed.join(" · "));
+      }
+      // Failure/skip details for anything that didn't happen
+      const problems: string[] = [];
+      if (p.wa_error) problems.push(`WhatsApp failed: ${p.wa_error}`);
+      else if (p.wa_skipped && !failed) problems.push("WhatsApp skipped (no template)");
+      if (p.email_error) problems.push(`email failed: ${p.email_error}`);
+      else if (p.email_skipped && !failed) problems.push("email skipped (no template or email)");
+      if (p.enroll_error) problems.push(`LMS failed: ${p.enroll_error}`);
+      else if (p.enroll_skipped && !failed) problems.push("LMS skipped (not configured)");
+      if (problems.length) bits.push(problems.join(" · "));
+      const suffix = bits.length ? ` — ${bits.join(" | ")}` : "";
+      return `${actor} ${verb} the lead to ${cohort}${suffix}.`;
+    }
+    case "cohort_shifted": {
+      const from = typeof p.from_cohort === "string" ? `Cohort ${p.from_cohort}` : "old cohort";
+      const to = typeof p.to_cohort === "string" ? `Cohort ${p.to_cohort}` : "new cohort";
+      const count = typeof p.payments_shifted === "number" ? p.payments_shifted : 0;
+      return `${actor} shifted ${count} payment${count === 1 ? "" : "s"} from ${from} to ${to}.`;
+    }
     case "updated": {
       const changes = (p.changes ?? {}) as Record<string, { from: unknown; to: unknown }>;
       const parts: string[] = [];

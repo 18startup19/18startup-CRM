@@ -6,7 +6,9 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/rbac-server";
 import { formatDateTime, incentivePercentForAmount, netAfterGst } from "@/lib/utils";
 import { CallbacksRangePicker } from "@/components/leads/callbacks-range-picker";
-import { ConvertedAmountCell } from "@/components/converted-amount-cell";
+import { GroupedPaymentTable, type LeadGroup } from "@/components/leads/grouped-payment-table";
+import type { OnboardingState } from "@/components/leads/onboard-lms-button";
+import type { LeadLmsOnboardingRow } from "@/lib/database.types";
 
 type RangeKey =
   | "today"
@@ -18,7 +20,12 @@ type RangeKey =
   | "custom";
 
 interface PageProps {
-  searchParams: Promise<{ range?: RangeKey; from?: string; to?: string }>;
+  searchParams: Promise<{
+    range?: RangeKey;
+    from?: string;
+    to?: string;
+    cohort?: string;
+  }>;
 }
 
 function computeRange(
@@ -88,7 +95,7 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
 
   let amountsQ = sb
     .from("lead_amounts")
-    .select("id,lead_id,actor_id,amount,note,created_at")
+    .select("id,lead_id,actor_id,amount,note,cohort_number,created_at")
     .gte("created_at", from.toISOString())
     .lte("created_at", to.toISOString())
     .order("created_at", { ascending: false });
@@ -105,6 +112,7 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
     actor_id: string | null;
     amount: number;
     note: string | null;
+    cohort_number: string | null;
     created_at: string;
   }[];
   const users = (usersData ?? []) as {
@@ -163,6 +171,107 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
   }
   const perUserRows = Array.from(perUser.values()).sort(
     (a, b) => b.amount - a.amount,
+  );
+
+  // Per-cohort breakdown for the range — clicking a row filters the log below.
+  const perCohort = new Map<
+    string,
+    { number: string; count: number; amount: number; leadIds: Set<string> }
+  >();
+  for (const a of amounts) {
+    const key = a.cohort_number ?? "";
+    if (!key) continue;
+    const entry = perCohort.get(key) ?? {
+      number: key,
+      count: 0,
+      amount: 0,
+      leadIds: new Set<string>(),
+    };
+    entry.leadIds.add(a.lead_id);
+    entry.count += 1;
+    entry.amount += Number(a.amount);
+    perCohort.set(key, entry);
+  }
+  const perCohortRows = Array.from(perCohort.values()).sort((a, b) => {
+    const na = Number(a.number);
+    const nb = Number(b.number);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return nb - na;
+    return a.number.localeCompare(b.number);
+  });
+
+  const cohortFilter = params.cohort?.trim() || null;
+  const displayedAmounts = cohortFilter
+    ? amounts.filter((a) => a.cohort_number === cohortFilter)
+    : amounts;
+
+  // When a specific cohort is picked, resolve the cohort row + onboarding
+  // status so we can render the "Onboard to LMS" button per lead. Without
+  // a cohort filter the mapping is ambiguous (lead could be in >1 cohorts),
+  // so we skip the button in that case and prompt the user to filter.
+  let onboardingProp:
+    | { cohortId: string; byLeadId: Map<string, OnboardingState> }
+    | undefined;
+  if (cohortFilter) {
+    const { data: cohortRow } = await sb
+      .from("cohorts")
+      .select("id")
+      .eq("number", cohortFilter)
+      .maybeSingle<{ id: string }>();
+    if (cohortRow) {
+      const displayedLeadIds = Array.from(
+        new Set(displayedAmounts.map((a) => a.lead_id)),
+      );
+      const { data: onboardingsData } = displayedLeadIds.length
+        ? await sb
+            .from("lead_lms_onboardings")
+            .select("lead_id,status,sent_at,error")
+            .eq("cohort_id", cohortRow.id)
+            .in("lead_id", displayedLeadIds)
+        : { data: [] as Pick<
+            LeadLmsOnboardingRow,
+            "lead_id" | "status" | "sent_at" | "error"
+          >[] };
+      const byLeadId = new Map<string, OnboardingState>();
+      for (const o of (onboardingsData ?? []) as Pick<
+        LeadLmsOnboardingRow,
+        "lead_id" | "status" | "sent_at" | "error"
+      >[]) {
+        byLeadId.set(o.lead_id, {
+          status: o.status === "pending" ? null : o.status,
+          sentAt: o.sent_at,
+          error: o.error,
+        });
+      }
+      onboardingProp = { cohortId: cohortRow.id, byLeadId };
+    }
+  }
+
+  // Group by lead so multiple payments from the same lead show as a single
+  // clickable row that expands to the individual payments.
+  const groups = new Map<string, LeadGroup>();
+  for (const a of displayedAmounts) {
+    const existing = groups.get(a.lead_id);
+    const p = {
+      id: a.id,
+      amount: Number(a.amount),
+      note: a.note,
+      cohort_number: a.cohort_number,
+      created_at: a.created_at,
+      actor_id: a.actor_id,
+      actorName: a.actor_id ? userById.get(a.actor_id)?.name ?? "" : "",
+    };
+    if (existing) {
+      existing.payments.push(p);
+    } else {
+      groups.set(a.lead_id, {
+        leadId: a.lead_id,
+        leadName: leadNameById.get(a.lead_id) ?? "Unknown",
+        payments: [p],
+      });
+    }
+  }
+  const leadGroups = Array.from(groups.values()).sort(
+    (a, b) => (a.payments[0].created_at < b.payments[0].created_at ? 1 : -1),
   );
 
   return (
@@ -240,69 +349,91 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
           </div>
         )}
 
+        {perCohortRows.length > 0 && (
+          <div>
+            <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
+              By cohort
+            </h2>
+            <Card className="p-0 overflow-x-auto">
+              <table className="w-full text-[14px]">
+                <thead className="bg-brand-bg border-b border-brand-border text-left">
+                  <tr>
+                    <Th>Cohort #</Th>
+                    <Th>Unique leads</Th>
+                    <Th>Payments</Th>
+                    <Th>Amount</Th>
+                    <Th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {perCohortRows.map((c) => {
+                    const isActive = cohortFilter === c.number;
+                    const href = (() => {
+                      const usp = new URLSearchParams();
+                      if (params.range) usp.set("range", params.range);
+                      if (params.from) usp.set("from", params.from);
+                      if (params.to) usp.set("to", params.to);
+                      if (!isActive) usp.set("cohort", c.number);
+                      const q = usp.toString();
+                      return q ? `?${q}` : "/converted-leads";
+                    })();
+                    return (
+                      <tr
+                        key={c.number}
+                        className={
+                          "border-b border-brand-border last:border-none " +
+                          (isActive ? "bg-brand-orange/5" : "hover:bg-brand-bg")
+                        }
+                      >
+                        <Td>
+                          <Link
+                            href={href}
+                            className="block font-mono font-bold text-brand-orange hover:text-brand-orange-dark"
+                          >
+                            Cohort {c.number}
+                          </Link>
+                        </Td>
+                        <Td>{c.leadIds.size}</Td>
+                        <Td>{c.count}</Td>
+                        <Td className="font-semibold">
+                          ₹{c.amount.toLocaleString("en-IN")}
+                        </Td>
+                        <Td>
+                          <Link
+                            href={href}
+                            className="text-[12px] font-bold text-brand-orange hover:text-brand-orange-dark"
+                          >
+                            {isActive ? "Clear filter" : "View leads →"}
+                          </Link>
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          </div>
+        )}
+
         <div>
           <h2 className="text-[15px] font-bold text-brand-charcoal mb-3">
             Payment log
+            {cohortFilter && (
+              <span className="ml-2 text-[12px] font-bold text-brand-orange bg-brand-orange/10 rounded-full px-2 py-0.5 align-middle">
+                Cohort {cohortFilter}
+              </span>
+            )}
           </h2>
-          <Card className="p-0 overflow-x-auto">
-            <table className="w-full min-w-[720px] text-[14px]">
-              <thead className="bg-brand-bg border-b border-brand-border text-left">
-                <tr>
-                  <Th>Lead</Th>
-                  <Th>Team member</Th>
-                  <Th>Amount</Th>
-                  <Th>Note</Th>
-                  <Th>When</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {amounts.map((a) => (
-                  <tr
-                    key={a.id}
-                    className="border-b border-brand-border last:border-none hover:bg-brand-bg cursor-pointer"
-                  >
-                    <Td>
-                      <Link
-                        href={`/leads/${a.lead_id}`}
-                        className="block font-bold text-brand-charcoal hover:text-brand-orange"
-                      >
-                        {leadNameById.get(a.lead_id) ?? "Unknown"}
-                      </Link>
-                    </Td>
-                    <Td>
-                      <Link href={`/leads/${a.lead_id}`} className="block">
-                        {a.actor_id ? userById.get(a.actor_id)?.name ?? "—" : "—"}
-                      </Link>
-                    </Td>
-                    <Td className="font-semibold">
-                      <ConvertedAmountCell
-                        amountId={a.id}
-                        initialAmount={Number(a.amount)}
-                        initialNote={a.note}
-                      />
-                    </Td>
-                    <Td className="text-brand-dark-text">
-                      <Link href={`/leads/${a.lead_id}`} className="block">
-                        {a.note ?? "—"}
-                      </Link>
-                    </Td>
-                    <Td className="text-brand-dark-text">
-                      <Link href={`/leads/${a.lead_id}`} className="block">
-                        {formatDateTime(a.created_at)}
-                      </Link>
-                    </Td>
-                  </tr>
-                ))}
-                {amounts.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-brand-dark-text">
-                      No payments in this range.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </Card>
+          <GroupedPaymentTable
+            groups={leadGroups}
+            emptyLabel="No payments in this range."
+            onboarding={onboardingProp}
+          />
+          {!cohortFilter && perCohortRows.length > 0 && (
+            <p className="mt-2 text-[11.5px] text-brand-dark-text">
+              Pick a cohort above to enable the LMS onboarding button per lead.
+            </p>
+          )}
         </div>
       </div>
     </>

@@ -75,16 +75,27 @@ export default async function LeadDetailPage({ params }: Params) {
 
   const tagSuggestions = await getTagSuggestions();
 
-  const { data: amountsData } = await sb
-    .from("lead_amounts")
-    .select("id,amount,note,created_at")
-    .eq("lead_id", id)
-    .order("created_at", { ascending: false });
+  const [{ data: amountsData }, { data: cohortsData }] = await Promise.all([
+    sb
+      .from("lead_amounts")
+      .select("id,amount,note,cohort_number,created_at")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false }),
+    sb
+      .from("cohorts")
+      .select("number,label")
+      .eq("is_active", true)
+      .order("number", { ascending: false }),
+  ]);
   const amounts = (amountsData ?? []) as Pick<
     LeadAmountRow,
-    "id" | "amount" | "note" | "created_at"
+    "id" | "amount" | "note" | "cohort_number" | "created_at"
   >[];
   const amountTotal = amounts.reduce((sum, a) => sum + Number(a.amount), 0);
+  const activeCohorts = (cohortsData ?? []) as {
+    number: string;
+    label: string | null;
+  }[];
 
   // Most recent call outcome for this lead — used to prefill the log-call form.
   const { data: lastCallLogRow } = await sb
@@ -133,9 +144,11 @@ export default async function LeadDetailPage({ params }: Params) {
         id: a.id,
         amount: Number(a.amount),
         note: a.note,
+        cohort_number: a.cohort_number,
         created_at: a.created_at,
       }))}
       amountTotal={amountTotal}
+      cohorts={activeCohorts}
     />
   );
 }

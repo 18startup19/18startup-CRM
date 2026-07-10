@@ -23,6 +23,7 @@ import {
   FileText,
   Menu,
   X,
+  Route,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { logoutAction } from "@/app/actions/auth";
@@ -51,7 +52,9 @@ const adminNav: NavItem[] = [
   { href: "/admin/fields", label: "Custom fields", icon: UserCog },
   { href: "/admin/templates", label: "Templates", icon: MailIcon },
   { href: "/admin/whatsapp-templates", label: "WhatsApp templates", icon: MessageSquare },
+  { href: "/admin/cohorts", label: "Cohort Onboarding", icon: IndianRupee },
   { href: "/admin/workflows", label: "Workflows", icon: Workflow },
+  { href: "/admin/lead-routing", label: "Lead Routing", icon: Route },
   { href: "/admin/integrations", label: "Integrations", icon: Settings },
 ];
 
