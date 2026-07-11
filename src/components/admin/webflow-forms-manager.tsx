@@ -1,28 +1,29 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight, EyeOff, Loader2, RotateCcw } from "lucide-react";
 import { Badge, Card, FieldError } from "@/components/ui/card";
 import {
   upsertFieldMappingAction,
   deleteFieldMappingAction,
 } from "@/app/actions/field-mapping";
+import {
+  hideAdminFormAction,
+  restoreAdminFormAction,
+} from "@/app/actions/hidden-forms";
 
 export interface FormFieldRow {
   displayName: string;
   slug: string;
   type: string;
-  // Value from the current mapping (may be undefined → falls back to legacy
-  // heuristic, or "" if the admin picked "unset" explicitly).
   current: string | null;
-  // Existing DB row id, if any — needed to delete on "unset".
   mappingId: string | null;
 }
 
 export interface WebflowFormEntry {
   id: string;
   displayName: string;
-  seen: boolean; // true if the CRM has already received a submission for this form
+  seen: boolean;
   fields: FormFieldRow[];
 }
 
@@ -33,6 +34,7 @@ export interface CustomFieldOption {
 
 interface Props {
   forms: WebflowFormEntry[];
+  hiddenForms: WebflowFormEntry[];
   customFields: CustomFieldOption[];
   apiError: string | null;
 }
@@ -46,9 +48,12 @@ const CORE_TARGETS: { value: string; label: string }[] = [
 
 export function WebflowFormsManager({
   forms,
+  hiddenForms,
   customFields,
   apiError,
 }: Props) {
+  const [showHidden, setShowHidden] = useState(false);
+
   return (
     <Card className="p-6">
       <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
@@ -62,9 +67,25 @@ export function WebflowFormsManager({
             Mappings apply on the very next submission.
           </p>
         </div>
-        <Badge color={apiError ? "slate" : "green"}>
-          {apiError ? "API not connected" : `${forms.length} forms`}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge color={apiError ? "slate" : "green"}>
+            {apiError ? "API not connected" : `${forms.length} visible`}
+          </Badge>
+          {hiddenForms.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowHidden((v) => !v)}
+              className={`inline-flex items-center gap-1 text-[12px] font-bold rounded-[8px] px-3 py-1.5 border transition-colors ${
+                showHidden
+                  ? "bg-brand-orange text-white border-brand-orange"
+                  : "bg-white text-brand-dark-text border-brand-border hover:border-brand-orange hover:text-brand-orange"
+              }`}
+            >
+              <EyeOff size={12} />
+              {showHidden ? "Hide" : "Show"} hidden ({hiddenForms.length})
+            </button>
+          )}
+        </div>
       </div>
 
       {apiError && (
@@ -81,7 +102,9 @@ export function WebflowFormsManager({
 
       {forms.length === 0 && !apiError && (
         <div className="rounded-[10px] border border-brand-border p-6 text-center text-[13px] text-brand-dark-text">
-          No forms found on your Webflow site.
+          {hiddenForms.length > 0
+            ? "All forms are currently hidden. Toggle “Show hidden” above to restore any."
+            : "No forms found on your Webflow site."}
         </div>
       )}
 
@@ -91,9 +114,34 @@ export function WebflowFormsManager({
             key={f.id + f.displayName}
             form={f}
             customFields={customFields}
+            hidden={false}
           />
         ))}
       </div>
+
+      {showHidden && hiddenForms.length > 0 && (
+        <div className="mt-6 border-t border-brand-border pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <EyeOff size={14} className="text-brand-dark-text" />
+            <h3 className="text-[13px] font-bold text-brand-charcoal">
+              Hidden forms ({hiddenForms.length})
+            </h3>
+            <span className="text-[11.5px] text-brand-dark-text">
+              — still receive webhooks, just tucked away in the admin UI.
+            </span>
+          </div>
+          <div className="flex flex-col gap-3">
+            {hiddenForms.map((f) => (
+              <FormRow
+                key={"hidden-" + f.id + f.displayName}
+                form={f}
+                customFields={customFields}
+                hidden
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
@@ -101,37 +149,82 @@ export function WebflowFormsManager({
 function FormRow({
   form,
   customFields,
+  hidden,
 }: {
   form: WebflowFormEntry;
   customFields: CustomFieldOption[];
+  hidden: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function toggleHidden() {
+    startTransition(async () => {
+      if (hidden) {
+        await restoreAdminFormAction("webflow", form.displayName);
+      } else {
+        await hideAdminFormAction("webflow", form.displayName);
+      }
+    });
+  }
 
   return (
-    <div className="border border-brand-border rounded-[10px] overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-brand-bg"
-      >
-        <ChevronRight
-          size={14}
-          className={`text-brand-dark-text transition-transform ${
-            open ? "rotate-90" : ""
+    <div
+      className={`border rounded-[10px] overflow-hidden ${
+        hidden ? "border-dashed border-brand-border bg-brand-bg/40" : "border-brand-border"
+      }`}
+    >
+      <div className="w-full flex items-center gap-2 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+        >
+          <ChevronRight
+            size={14}
+            className={`text-brand-dark-text transition-transform ${
+              open ? "rotate-90" : ""
+            }`}
+          />
+          <span className="font-mono text-[13.5px] font-bold text-brand-charcoal flex-1 truncate">
+            {form.displayName}
+          </span>
+          {form.seen && !hidden && (
+            <Badge color="green">Received submissions</Badge>
+          )}
+          <span className="text-[11.5px] text-brand-dark-text whitespace-nowrap">
+            {form.fields.length} field{form.fields.length === 1 ? "" : "s"}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleHidden();
+          }}
+          disabled={isPending}
+          className={`inline-flex items-center gap-1 text-[11.5px] font-bold rounded-[6px] px-2 py-1 border transition-colors ${
+            hidden
+              ? "border-brand-border text-brand-orange hover:bg-brand-orange/10"
+              : "border-transparent text-brand-dark-text hover:bg-brand-bg hover:text-red-500"
           }`}
-        />
-        <span className="font-mono text-[13.5px] font-bold text-brand-charcoal flex-1 truncate">
-          {form.displayName}
-        </span>
-        {form.seen && (
-          <Badge color="green">
-            Received submissions
-          </Badge>
-        )}
-        <span className="text-[11.5px] text-brand-dark-text">
-          {form.fields.length} field{form.fields.length === 1 ? "" : "s"}
-        </span>
-      </button>
+          title={hidden ? "Restore form to the visible list" : "Hide this form from the admin UI"}
+        >
+          {isPending ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : hidden ? (
+            <>
+              <RotateCcw size={12} />
+              Restore
+            </>
+          ) : (
+            <>
+              <EyeOff size={12} />
+              Hide
+            </>
+          )}
+        </button>
+      </div>
       {open && (
         <div className="border-t border-brand-border bg-brand-bg/40 px-4 py-3">
           {form.fields.length === 0 ? (
@@ -175,8 +268,6 @@ function FieldMappingRow({
     setCurrent(next);
     startTransition(async () => {
       if (!next) {
-        // Unset → delete the mapping row so we fall back to the heuristic
-        // for this field.
         if (field.mappingId) {
           await deleteFieldMappingAction(field.mappingId);
         }
@@ -202,7 +293,7 @@ function FieldMappingRow({
           {field.displayName}
         </div>
         <div className="text-[11px] text-brand-dark-text font-mono">
-          slug: {field.slug} · type: {field.type}
+          slug: {field.slug || "—"} · type: {field.type}
         </div>
       </div>
       <select

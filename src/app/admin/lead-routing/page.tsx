@@ -39,6 +39,7 @@ export default async function LeadRoutingPage() {
     { data: recentLeadsData },
     { data: customFieldsData },
     { data: mappingsData },
+    { data: hiddenFormsData },
     webflowResult,
   ] = await Promise.all([
     sb
@@ -76,6 +77,10 @@ export default async function LeadRoutingPage() {
     sb
       .from("lead_field_mappings")
       .select("id,source,form_key,external_field,crm_target")
+      .eq("source", "webflow"),
+    sb
+      .from("hidden_admin_forms")
+      .select("form_key")
       .eq("source", "webflow"),
     fetchWebflowForms(),
   ]);
@@ -183,7 +188,11 @@ export default async function LeadRoutingPage() {
     }
   }
 
-  const webflowForms: WebflowFormEntry[] = webflowResult.ok
+  const hiddenFormKeys = new Set(
+    ((hiddenFormsData ?? []) as { form_key: string }[]).map((h) => h.form_key),
+  );
+
+  const webflowFormsAll: WebflowFormEntry[] = webflowResult.ok
     ? webflowResult.forms.map((f) => {
         const fieldSchema = f.fields ?? {};
         const apiFields = Object.entries(fieldSchema).map(([, v]) => ({
@@ -234,6 +243,13 @@ export default async function LeadRoutingPage() {
         return { id: formName, displayName: formName, seen: true, fields };
       });
 
+  const webflowForms = webflowFormsAll.filter(
+    (f) => !hiddenFormKeys.has(f.displayName),
+  );
+  const webflowFormsHidden = webflowFormsAll.filter((f) =>
+    hiddenFormKeys.has(f.displayName),
+  );
+
   return (
     <>
       <PageHeader
@@ -249,6 +265,7 @@ export default async function LeadRoutingPage() {
         />
         <WebflowFormsManager
           forms={webflowForms}
+          hiddenForms={webflowFormsHidden}
           customFields={customFieldOptions}
           apiError={webflowResult.ok ? null : webflowResult.error ?? null}
         />
