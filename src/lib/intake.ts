@@ -5,12 +5,8 @@ import type { LeadRow, LeadSource } from "./database.types";
 // Shared helper: intake a lead from a public source (web form, ads webhook,
 // missed call, etc.), assign to first stage, record source, run workflows.
 //
-// Person-level dedup: if a lead with the same email OR phone already exists,
-// we don't create a duplicate. Instead we append the new signal as an
-// activity ("payment via razorpay", "form submit via webflow") so the
-// existing lead's owner/stage/tags stay untouched but the timeline captures
-// the new interaction. Fresh anonymous leads (no email + no phone) always
-// insert.
+// No dedup — every submission creates a new lead, per business decision
+// (2026-07-11). Sales team handles duplicates in-CRM after the fact.
 export async function intakeLead(
   input: {
     name: string;
@@ -40,38 +36,6 @@ export async function intakeLead(
 
   const normalizedPhone = normalizePhone(input.phone ?? null);
   const normalizedEmail = input.email?.trim().toLowerCase() || null;
-
-  // Person-level dedup — match against email OR phone if we have either.
-  if (normalizedEmail || normalizedPhone) {
-    const orClauses: string[] = [];
-    if (normalizedEmail) orClauses.push(`email.eq.${normalizedEmail}`);
-    if (normalizedPhone) orClauses.push(`phone.eq.${normalizedPhone}`);
-    const { data: existing } = await sb
-      .from("leads")
-      .select("id")
-      .or(orClauses.join(","))
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<Pick<LeadRow, "id">>();
-    if (existing) {
-      await sb.from("lead_activities").insert({
-        lead_id: existing.id,
-        actor_id: systemActorId,
-        kind: "signal",
-        payload: {
-          source: input.source,
-          via: "intake_dedup",
-          new_data: {
-            name: input.name,
-            phone: normalizedPhone,
-            email: normalizedEmail,
-            ...(input.custom ?? {}),
-          },
-        },
-      });
-      return { ok: true, leadId: existing.id, merged: true };
-    }
-  }
 
   const { stageId: targetStageId, matchedRuleId } = await resolveTargetStage(
     input.source,
