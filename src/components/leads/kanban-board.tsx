@@ -23,6 +23,7 @@ import {
   saveKanbanCardFieldsAction,
 } from "@/app/actions/kanban";
 import { formatRelative } from "@/lib/utils";
+import { KanbanCallButton } from "@/components/leads/kanban-call-button";
 
 const BUILTIN_FIELDS: { key: string; label: string }[] = [
   { key: "phone", label: "Phone" },
@@ -700,6 +701,21 @@ function LeadCard({
         </div>
         <div className="flex flex-col gap-0.5 mt-1.5">
           {cardFields.map((key) => {
+            if (key === "phone" && lead.phone) {
+              return (
+                <div
+                  key={key}
+                  className="text-[11.5px] text-brand-dark-text flex items-center gap-1.5"
+                >
+                  <span className="truncate">{lead.phone}</span>
+                  <KanbanCallButton
+                    leadId={lead.id}
+                    phone={lead.phone}
+                    isDnc={lead.is_dnc}
+                  />
+                </div>
+              );
+            }
             const rendered = renderCardField(key, lead, customFields, ownerNamesById);
             if (!rendered) return null;
             return (
