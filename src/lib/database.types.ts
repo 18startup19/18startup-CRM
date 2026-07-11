@@ -73,6 +73,16 @@ export interface CohortRow {
   updated_at: string;
 }
 
+export interface LeadFieldMappingRow {
+  id: string;
+  source: "webflow" | "razorpay";
+  form_key: string;
+  external_field: string;
+  crm_target: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface LeadRoutingRuleRow {
   id: string;
   source: "razorpay" | "webflow";

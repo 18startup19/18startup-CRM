@@ -1,13 +1,22 @@
 import { PageHeader } from "@/components/page-header";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { formatDateTime } from "@/lib/utils";
+import { fetchWebflowForms } from "@/lib/integrations/webflow";
 import {
   RoutingManager,
   type StageOption,
   type UnmatchedKey,
 } from "@/components/admin/routing-manager";
+import {
+  WebflowFormsManager,
+  type CustomFieldOption,
+  type FormFieldRow,
+  type WebflowFormEntry,
+} from "@/components/admin/webflow-forms-manager";
 import type {
+  CustomFieldRow,
   IntakeSettingsRow,
+  LeadFieldMappingRow,
   LeadRoutingRuleRow,
   LeadStageRow,
   PipelineRow,
@@ -28,6 +37,9 @@ export default async function LeadRoutingPage() {
     { data: pipelinesData },
     { data: settingsData },
     { data: recentLeadsData },
+    { data: customFieldsData },
+    { data: mappingsData },
+    webflowResult,
   ] = await Promise.all([
     sb
       .from("lead_routing_rules")
@@ -56,6 +68,16 @@ export default async function LeadRoutingPage() {
       .in("source", ["razorpay", "webflow"])
       .order("created_at", { ascending: false })
       .limit(500),
+    sb
+      .from("custom_fields")
+      .select("key,label")
+      .eq("is_archived", false)
+      .order("position"),
+    sb
+      .from("lead_field_mappings")
+      .select("id,source,form_key,external_field,crm_target")
+      .eq("source", "webflow"),
+    fetchWebflowForms(),
   ]);
 
   const rules = (rulesData ?? []) as LeadRoutingRuleRow[];
@@ -119,18 +141,116 @@ export default async function LeadRoutingPage() {
       last_seen_label: formatDateTime(u.last_seen_iso),
     }));
 
+  // ─── Webflow forms + field mapping ────────────────────────────────────
+  const customFieldOptions: CustomFieldOption[] = (
+    (customFieldsData ?? []) as Pick<CustomFieldRow, "key" | "label">[]
+  ).map((c) => ({ key: c.key, label: c.label }));
+
+  const allMappings = (mappingsData ?? []) as Pick<
+    LeadFieldMappingRow,
+    "id" | "form_key" | "external_field" | "crm_target"
+  >[];
+  // Index mappings by (form_key -> external_field)
+  const mappingIndex = new Map<string, Map<string, { id: string; target: string }>>();
+  for (const m of allMappings) {
+    let inner = mappingIndex.get(m.form_key);
+    if (!inner) {
+      inner = new Map();
+      mappingIndex.set(m.form_key, inner);
+    }
+    inner.set(m.external_field, { id: m.id, target: m.crm_target });
+  }
+
+  // Observed field names per form from recent submissions (webhook stashes
+  // custom.__raw_fields). Falls back when the Webflow API isn't reachable
+  // or the form was created before we started calling the API.
+  const observedFieldsPerForm = new Map<string, Set<string>>();
+  const seenForms = new Set<string>();
+  for (const l of (recentLeadsData ?? []) as RecentLead[]) {
+    if (l.source !== "webflow") continue;
+    const custom = (l.custom as Record<string, unknown> | null) ?? {};
+    const formName = custom.webflow_form_name;
+    if (typeof formName !== "string" || !formName) continue;
+    seenForms.add(formName);
+    const raws = custom.__raw_fields;
+    if (Array.isArray(raws)) {
+      let set = observedFieldsPerForm.get(formName);
+      if (!set) {
+        set = new Set();
+        observedFieldsPerForm.set(formName, set);
+      }
+      for (const r of raws) if (typeof r === "string") set.add(r);
+    }
+  }
+
+  const webflowForms: WebflowFormEntry[] = webflowResult.ok
+    ? webflowResult.forms.map((f) => {
+        const fieldSchema = f.fields ?? {};
+        const apiFields = Object.entries(fieldSchema).map(([, v]) => ({
+          displayName: v.displayName,
+          slug: v.slug,
+          type: v.type,
+        }));
+        const merged = new Map<string, { displayName: string; slug: string; type: string }>();
+        for (const af of apiFields) merged.set(af.displayName, af);
+        // Add any observed fields not in the API schema (e.g., admin renamed
+        // the form after publishing).
+        for (const obs of observedFieldsPerForm.get(f.displayName) ?? []) {
+          if (!merged.has(obs)) merged.set(obs, { displayName: obs, slug: "", type: "observed" });
+        }
+        const inner = mappingIndex.get(f.displayName);
+        const fields: FormFieldRow[] = Array.from(merged.values()).map((mf) => {
+          const m = inner?.get(mf.displayName);
+          return {
+            displayName: mf.displayName,
+            slug: mf.slug,
+            type: mf.type,
+            current: m?.target ?? null,
+            mappingId: m?.id ?? null,
+          };
+        });
+        return {
+          id: f.id,
+          displayName: f.displayName,
+          seen: seenForms.has(f.displayName),
+          fields,
+        };
+      })
+    : Array.from(seenForms).map((formName) => {
+        // API unavailable — fall back to observed forms only.
+        const inner = mappingIndex.get(formName);
+        const fields: FormFieldRow[] = Array.from(
+          observedFieldsPerForm.get(formName) ?? [],
+        ).map((name) => {
+          const m = inner?.get(name);
+          return {
+            displayName: name,
+            slug: "",
+            type: "observed",
+            current: m?.target ?? null,
+            mappingId: m?.id ?? null,
+          };
+        });
+        return { id: formName, displayName: formName, seen: true, fields };
+      });
+
   return (
     <>
       <PageHeader
         title="Lead Routing"
         subtitle="Send each Razorpay payment page and each Webflow form to its own stage. Fallback catches anything unmatched."
       />
-      <div className="p-8">
+      <div className="p-8 flex flex-col gap-6">
         <RoutingManager
           rules={decoratedRules}
           stages={stageOptions}
           fallbackStageId={settingsData?.fallback_stage_id ?? null}
           unmatched={unmatched}
+        />
+        <WebflowFormsManager
+          forms={webflowForms}
+          customFields={customFieldOptions}
+          apiError={webflowResult.ok ? null : webflowResult.error ?? null}
         />
       </div>
     </>
