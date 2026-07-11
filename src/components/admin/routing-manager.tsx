@@ -8,6 +8,7 @@ import {
   createRoutingRuleAction,
   deleteRoutingRuleAction,
   updateFallbackStageAction,
+  updateRazorpayRequireRuleAction,
   updateRoutingRuleAction,
   type RoutingResult,
 } from "@/app/actions/routing";
@@ -41,6 +42,7 @@ interface Props {
   rules: RuleRow[];
   stages: StageOption[];
   fallbackStageId: string | null;
+  razorpayRequireRule: boolean;
   unmatched: UnmatchedKey[];
 }
 
@@ -48,6 +50,7 @@ export function RoutingManager({
   rules,
   stages,
   fallbackStageId,
+  razorpayRequireRule,
   unmatched,
 }: Props) {
   const [prefill, setPrefill] = useState<{
@@ -61,6 +64,8 @@ export function RoutingManager({
   return (
     <div className="flex flex-col gap-6">
       <FallbackCard stages={stages} fallbackStageId={fallbackStageId} />
+
+      <RazorpayFiltersCard initialRequireRule={razorpayRequireRule} />
 
       {unmatched.length > 0 && (
         <UnmatchedCard
@@ -157,6 +162,77 @@ function FallbackCard({
           {isPending ? "Saving…" : dirty ? "Save fallback" : "No changes"}
         </Button>
       </div>
+    </Card>
+  );
+}
+
+function RazorpayFiltersCard({
+  initialRequireRule,
+}: {
+  initialRequireRule: boolean;
+}) {
+  const [checked, setChecked] = useState(initialRequireRule);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  function toggle(next: boolean) {
+    setError(null);
+    setChecked(next);
+    startTransition(async () => {
+      const res = await updateRazorpayRequireRuleAction(next);
+      if (res.error) {
+        setError(res.error);
+        setChecked(!next);
+        return;
+      }
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1200);
+    });
+  }
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-[15px] font-bold text-brand-charcoal">
+            Razorpay filters
+          </h2>
+          <p className="text-[12.5px] text-brand-dark-text mt-1">
+            Control which captured payments become CRM leads.
+          </p>
+        </div>
+        {savedFlash && (
+          <span className="text-[12px] font-bold text-green-600 bg-green-50 border border-green-200 rounded-full px-3 py-1">
+            Saved
+          </span>
+        )}
+      </div>
+      <label className="mt-4 flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={isPending}
+          onChange={(e) => toggle(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-brand-orange"
+        />
+        <span className="text-[13.5px] text-brand-charcoal">
+          <span className="font-bold">
+            Only accept payments matching a routing rule (allowlist mode).
+          </span>
+          <span className="block text-[12px] text-brand-dark-text mt-0.5">
+            When ON: a payment whose description doesn&apos;t match any active
+            Razorpay routing rule is silently ignored — no lead is created,
+            Razorpay gets a 200 back so it won&apos;t retry. Use this to filter
+            out test payments, refunds, and unrelated Razorpay flows.
+          </span>
+        </span>
+      </label>
+      {error && (
+        <div className="bg-[#FFF4EF] border border-[#FFD5C2] rounded-[10px] px-4 py-3 mt-4">
+          <FieldError>{error}</FieldError>
+        </div>
+      )}
     </Card>
   );
 }

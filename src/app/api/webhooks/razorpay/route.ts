@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { intakeLead } from "@/lib/intake";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import type { IntakeSettingsRow } from "@/lib/database.types";
 
 // Razorpay webhook receiver. Razorpay signs every request with an HMAC-SHA256
 // of the raw request body using the webhook secret configured in the
@@ -60,6 +62,40 @@ export async function POST(req: NextRequest) {
   // Admins create one routing rule per payment page in Admin → Lead
   // Routing to send each to its own stage.
   const routingKey = payment.description ?? null;
+
+  // Allowlist mode: when razorpay_require_rule is on, we only accept
+  // payments whose description matches an active routing rule. Anything
+  // else — test payments, refunds, unrelated Razorpay flows — is
+  // silently ignored (200 back so Razorpay doesn't retry).
+  const sb = supabaseAdmin();
+  const { data: settings } = await sb
+    .from("intake_settings")
+    .select("razorpay_require_rule")
+    .eq("id", 1)
+    .maybeSingle<Pick<IntakeSettingsRow, "razorpay_require_rule">>();
+  if (settings?.razorpay_require_rule) {
+    if (!routingKey) {
+      return Response.json({
+        ok: true,
+        action: "ignored",
+        reason: "no_description",
+      });
+    }
+    const { data: rule } = await sb
+      .from("lead_routing_rules")
+      .select("id")
+      .eq("source", "razorpay")
+      .eq("match_value", routingKey)
+      .eq("is_active", true)
+      .maybeSingle<{ id: string }>();
+    if (!rule) {
+      return Response.json({
+        ok: true,
+        action: "ignored",
+        reason: "no_matching_rule",
+      });
+    }
+  }
 
   const res = await intakeLead({
     name,

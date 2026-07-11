@@ -59,9 +59,11 @@ export default async function LeadRoutingPage() {
       .order("position"),
     sb
       .from("intake_settings")
-      .select("fallback_stage_id")
+      .select("fallback_stage_id,razorpay_require_rule")
       .eq("id", 1)
-      .maybeSingle<Pick<IntakeSettingsRow, "fallback_stage_id">>(),
+      .maybeSingle<
+        Pick<IntakeSettingsRow, "fallback_stage_id" | "razorpay_require_rule">
+      >(),
     // Recent inbound leads for the "unmatched keys" discovery panel.
     sb
       .from("leads")
@@ -275,6 +277,7 @@ export default async function LeadRoutingPage() {
           rules={decoratedRules}
           stages={stageOptions}
           fallbackStageId={settingsData?.fallback_stage_id ?? null}
+          razorpayRequireRule={settingsData?.razorpay_require_rule ?? false}
           unmatched={unmatched}
         />
         <WebflowFormsManager

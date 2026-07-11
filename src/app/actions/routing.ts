@@ -115,6 +115,23 @@ export async function setWebflowFormRouteAction(
   return { ok: true };
 }
 
+export async function updateRazorpayRequireRuleAction(
+  requireRule: boolean,
+): Promise<RoutingResult> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  const { error } = await sb
+    .from("intake_settings")
+    .upsert({
+      id: 1,
+      razorpay_require_rule: requireRule,
+      updated_at: new Date().toISOString(),
+    });
+  if (error) return { error: error.message };
+  revalidatePath("/admin/lead-routing");
+  return { ok: true };
+}
+
 export async function updateFallbackStageAction(
   stage_id: string | null,
 ): Promise<RoutingResult> {

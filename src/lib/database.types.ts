@@ -97,6 +97,7 @@ export interface LeadRoutingRuleRow {
 export interface IntakeSettingsRow {
   id: number;
   fallback_stage_id: string | null;
+  razorpay_require_rule: boolean;
   updated_at: string;
 }
 
