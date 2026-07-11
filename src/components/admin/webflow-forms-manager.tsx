@@ -11,6 +11,8 @@ import {
   hideAdminFormAction,
   restoreAdminFormAction,
 } from "@/app/actions/hidden-forms";
+import { setWebflowFormRouteAction } from "@/app/actions/routing";
+import type { StageOption } from "@/components/admin/routing-manager";
 
 export interface FormFieldRow {
   displayName: string;
@@ -25,6 +27,10 @@ export interface WebflowFormEntry {
   displayName: string;
   seen: boolean;
   fields: FormFieldRow[];
+  // Current routing target for this form (null = no rule, falls back to
+  // the global fallback stage). Populated from lead_routing_rules where
+  // source=webflow, match_value=displayName.
+  routeStageId: string | null;
 }
 
 export interface CustomFieldOption {
@@ -36,6 +42,7 @@ interface Props {
   forms: WebflowFormEntry[];
   hiddenForms: WebflowFormEntry[];
   customFields: CustomFieldOption[];
+  stages: StageOption[];
   apiError: string | null;
 }
 
@@ -50,6 +57,7 @@ export function WebflowFormsManager({
   forms,
   hiddenForms,
   customFields,
+  stages,
   apiError,
 }: Props) {
   const [showHidden, setShowHidden] = useState(false);
@@ -114,6 +122,7 @@ export function WebflowFormsManager({
             key={f.id + f.displayName}
             form={f}
             customFields={customFields}
+            stages={stages}
             hidden={false}
           />
         ))}
@@ -136,6 +145,7 @@ export function WebflowFormsManager({
                 key={"hidden-" + f.id + f.displayName}
                 form={f}
                 customFields={customFields}
+                stages={stages}
                 hidden
               />
             ))}
@@ -149,14 +159,18 @@ export function WebflowFormsManager({
 function FormRow({
   form,
   customFields,
+  stages,
   hidden,
 }: {
   form: WebflowFormEntry;
   customFields: CustomFieldOption[];
+  stages: StageOption[];
   hidden: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [route, setRoute] = useState(form.routeStageId ?? "");
+  const [isRoutePending, startRouteTransition] = useTransition();
 
   function toggleHidden() {
     startTransition(async () => {
@@ -167,6 +181,17 @@ function FormRow({
       }
     });
   }
+
+  function saveRoute(next: string) {
+    setRoute(next);
+    startRouteTransition(async () => {
+      await setWebflowFormRouteAction(form.displayName, next || null);
+    });
+  }
+
+  const routedStage = form.routeStageId
+    ? stages.find((s) => s.id === form.routeStageId)
+    : null;
 
   return (
     <div
@@ -189,6 +214,9 @@ function FormRow({
           <span className="font-mono text-[13.5px] font-bold text-brand-charcoal flex-1 truncate">
             {form.displayName}
           </span>
+          {routedStage && (
+            <Badge color="orange">→ {routedStage.name}</Badge>
+          )}
           {form.seen && !hidden && (
             <Badge color="green">Received submissions</Badge>
           )}
@@ -226,24 +254,55 @@ function FormRow({
         </button>
       </div>
       {open && (
-        <div className="border-t border-brand-border bg-brand-bg/40 px-4 py-3">
-          {form.fields.length === 0 ? (
-            <p className="text-[12.5px] text-brand-dark-text">
-              No field schema yet — submit one test entry from this form to
-              populate its fields.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {form.fields.map((field) => (
-                <FieldMappingRow
-                  key={form.displayName + field.displayName + field.slug}
-                  formKey={form.displayName}
-                  field={field}
-                  customFields={customFields}
-                />
-              ))}
+        <div className="border-t border-brand-border bg-brand-bg/40 px-4 py-3 flex flex-col gap-4">
+          <div className="rounded-[8px] bg-white border border-brand-border p-3 flex items-center gap-3 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <div className="text-[11.5px] font-bold uppercase tracking-[0.5px] text-brand-dark-text">
+                Route new submissions to
+              </div>
+              <div className="text-[11.5px] text-brand-dark-text mt-0.5">
+                Leave blank to fall back to the global fallback stage.
+              </div>
             </div>
-          )}
+            <select
+              value={route}
+              onChange={(e) => saveRoute(e.target.value)}
+              disabled={isRoutePending}
+              className="h-[36px] rounded-[8px] border border-brand-border bg-white px-2 text-[13px] text-brand-charcoal focus:outline-none focus:border-brand-orange min-w-[240px]"
+            >
+              <option value="">— use fallback stage —</option>
+              {stages.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.pipelineName} · {s.name}
+                </option>
+              ))}
+            </select>
+            {isRoutePending && (
+              <Loader2 size={14} className="animate-spin text-brand-dark-text" />
+            )}
+          </div>
+          <div>
+            <div className="text-[11.5px] font-bold uppercase tracking-[0.5px] text-brand-dark-text mb-2">
+              Field mapping
+            </div>
+            {form.fields.length === 0 ? (
+              <p className="text-[12.5px] text-brand-dark-text">
+                No field schema yet — submit one test entry from this form to
+                populate its fields.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {form.fields.map((field) => (
+                  <FieldMappingRow
+                    key={form.displayName + field.displayName + field.slug}
+                    formKey={form.displayName}
+                    field={field}
+                    customFields={customFields}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

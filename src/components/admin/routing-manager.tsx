@@ -79,12 +79,9 @@ export function RoutingManager({
             rules={razorpayRules}
             stages={stages}
           />
-          <RulesSection
-            title="Webflow rules"
-            emptyLabel="No Webflow routing rules yet. Every form submission goes to the fallback stage."
-            rules={webflowRules}
-            stages={stages}
-          />
+          <div className="text-[12px] text-brand-dark-text bg-brand-bg/60 border border-brand-border rounded-[10px] px-4 py-3">
+            Webflow routing lives under each form in the &ldquo;Webflow forms + field mapping&rdquo; card below — pick the stage right where you map the fields.
+          </div>
         </div>
         <div className="order-1 md:order-2 md:sticky md:top-6">
           <AddRuleCard stages={stages} prefill={prefill} onDone={() => setPrefill(null)} />
@@ -355,13 +352,15 @@ function AddRuleCard({
           <select
             id="r-source"
             name="source"
-            defaultValue={prefill?.source ?? "webflow"}
+            defaultValue={prefill?.source ?? "razorpay"}
             required
             className="h-[38px] rounded-[10px] border border-brand-border bg-white px-3 text-[13.5px] text-brand-charcoal focus:outline-none focus:border-brand-orange"
           >
-            <option value="webflow">Webflow (match form name)</option>
             <option value="razorpay">Razorpay (match payment description)</option>
           </select>
+          <p className="text-[11.5px] text-brand-dark-text">
+            Webflow rules are managed per-form in the Webflow forms card below.
+          </p>
         </div>
         <div className="flex flex-col gap-[7px]">
           <FieldLabel htmlFor="r-match">Match value</FieldLabel>

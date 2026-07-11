@@ -192,6 +192,13 @@ export default async function LeadRoutingPage() {
     ((hiddenFormsData ?? []) as { form_key: string }[]).map((h) => h.form_key),
   );
 
+  // Map Webflow form name → routing target stage id (from active rules).
+  const webflowRouteByForm = new Map<string, string>();
+  for (const r of rules) {
+    if (r.source !== "webflow" || !r.is_active) continue;
+    webflowRouteByForm.set(r.match_value, r.stage_id);
+  }
+
   const webflowFormsAll: WebflowFormEntry[] = webflowResult.ok
     ? webflowResult.forms.map((f) => {
         const fieldSchema = f.fields ?? {};
@@ -223,6 +230,7 @@ export default async function LeadRoutingPage() {
           displayName: f.displayName,
           seen: seenForms.has(f.displayName),
           fields,
+          routeStageId: webflowRouteByForm.get(f.displayName) ?? null,
         };
       })
     : Array.from(seenForms).map((formName) => {
@@ -240,7 +248,13 @@ export default async function LeadRoutingPage() {
             mappingId: m?.id ?? null,
           };
         });
-        return { id: formName, displayName: formName, seen: true, fields };
+        return {
+          id: formName,
+          displayName: formName,
+          seen: true,
+          fields,
+          routeStageId: webflowRouteByForm.get(formName) ?? null,
+        };
       });
 
   const webflowForms = webflowFormsAll.filter(
@@ -267,6 +281,7 @@ export default async function LeadRoutingPage() {
           forms={webflowForms}
           hiddenForms={webflowFormsHidden}
           customFields={customFieldOptions}
+          stages={stageOptions}
           apiError={webflowResult.ok ? null : webflowResult.error ?? null}
         />
       </div>

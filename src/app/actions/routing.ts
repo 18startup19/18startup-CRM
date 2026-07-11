@@ -66,6 +66,55 @@ export async function deleteRoutingRuleAction(id: string): Promise<void> {
   revalidatePath("/admin/lead-routing");
 }
 
+// Set the routing target stage for a Webflow form directly (used from the
+// per-form panel in the Forms + Field Mapping card). Creates a rule if
+// missing, updates if present, deletes if stageId is null.
+export async function setWebflowFormRouteAction(
+  formKey: string,
+  stageId: string | null,
+): Promise<RoutingResult> {
+  await requireAdmin();
+  const trimmed = formKey.trim();
+  if (!trimmed) return { error: "form key is required" };
+
+  const sb = supabaseAdmin();
+  const { data: existing } = await sb
+    .from("lead_routing_rules")
+    .select("id")
+    .eq("source", "webflow")
+    .eq("match_value", trimmed)
+    .maybeSingle<{ id: string }>();
+
+  if (!stageId) {
+    if (existing) {
+      await sb.from("lead_routing_rules").delete().eq("id", existing.id);
+    }
+    revalidatePath("/admin/lead-routing");
+    return { ok: true };
+  }
+
+  if (existing) {
+    const { error } = await sb
+      .from("lead_routing_rules")
+      .update({
+        stage_id: stageId,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await sb.from("lead_routing_rules").insert({
+      source: "webflow",
+      match_value: trimmed,
+      stage_id: stageId,
+    });
+    if (error) return { error: error.message };
+  }
+  revalidatePath("/admin/lead-routing");
+  return { ok: true };
+}
+
 export async function updateFallbackStageAction(
   stage_id: string | null,
 ): Promise<RoutingResult> {
