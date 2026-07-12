@@ -22,11 +22,25 @@ export function TagChipInput({
   const [draft, setDraft] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hiddenRef = useRef<HTMLInputElement>(null);
+  const skipFirstDispatch = useRef(true);
 
   useEffect(() => {
     setTags(defaultValue);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultValue.join("|")]);
+
+  // Dispatch a native input event on the hidden field whenever the tags
+  // change, so the parent form's onChange handler (used for autosave)
+  // sees it. React updating the hidden input's `value` prop doesn't fire
+  // native events on its own.
+  useEffect(() => {
+    if (skipFirstDispatch.current) {
+      skipFirstDispatch.current = false;
+      return;
+    }
+    hiddenRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [tags]);
 
   const filteredSuggestions = useMemo(() => {
     const q = draft.trim().toLowerCase();
@@ -105,7 +119,7 @@ export function TagChipInput({
           }}
           className="flex-1 min-w-[80px] bg-transparent outline-none text-[13.5px] py-1"
         />
-        <input type="hidden" name={name} value={tags.join(",")} />
+        <input ref={hiddenRef} type="hidden" name={name} value={tags.join(",")} />
       </div>
 
       {showSuggestions && filteredSuggestions.length > 0 && (

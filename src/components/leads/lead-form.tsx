@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { createLeadAction, type LeadResult } from "@/app/actions/leads";
 import type { CustomFieldRow, LeadStageRow, UserRow } from "@/lib/database.types";
 import { TagChipInput } from "@/components/ui/tag-chip-input";
+import { CallbackDateTimeInput } from "@/components/ui/callback-datetime-input";
 
 const initial: LeadResult = {};
 
@@ -89,7 +90,7 @@ export function LeadForm({
           </div>
           <div className="flex flex-col gap-[7px]">
             <FieldLabel htmlFor="next_callback_at">Next callback</FieldLabel>
-            <Input id="next_callback_at" name="next_callback_at" type="datetime-local" />
+            <CallbackDateTimeInput id="next_callback_at" />
           </div>
         </div>
 

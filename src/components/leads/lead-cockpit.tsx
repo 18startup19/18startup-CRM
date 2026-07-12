@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Badge, Card, FieldLabel, Input, Select, Textarea } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatDateTime, formatRelative } from "@/lib/utils";
+import { formatDateTime, formatRelative, isoToLocalInput, localInputToIso } from "@/lib/utils";
 import {
   assignLeadAction,
   createNoteAction,
@@ -42,6 +42,7 @@ import type { Session } from "@/lib/session-types";
 import { hasPermission } from "@/lib/rbac";
 import { useToast } from "@/components/ui/toast";
 import { TagChipInput } from "@/components/ui/tag-chip-input";
+import { CallbackDateTimeInput } from "@/components/ui/callback-datetime-input";
 import { useRouter } from "next/navigation";
 import { EmailCompose } from "@/components/leads/email-compose";
 import { AddAmountCard } from "@/components/leads/add-amount-card";
@@ -412,15 +413,45 @@ export function LeadCockpit({
                 if (res && "ok" in res) toast("Changes saved.");
               }}
               onBlur={(e) => {
-                // Save only when focus leaves the currently-edited field.
-                // React's blur bubbles, so this fires per-field — clicking
-                // away or tabbing out commits. Mid-keystroke changes never
-                // fire the action so a half-typed phone/email is safe.
+                // Text-input path: save when focus leaves the field so a
+                // half-typed phone/email never persists mid-keystroke.
                 const form = e.currentTarget;
                 if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
                 autoSaveTimer.current = setTimeout(() => {
                   form.requestSubmit();
                 }, 0);
+              }}
+              onChange={(e) => {
+                // Non-text-input path: datetime pickers, checkboxes,
+                // dropdowns, tag chips, custom-field selects all report
+                // their change through onChange — often WITHOUT firing a
+                // subsequent blur (e.g. the datetime picker closes back
+                // onto the same input). Fire the save from here too, with
+                // a short debounce, so those changes persist.
+                //
+                // Skip text-like inputs — those still save on blur only.
+                const target = e.target as unknown as
+                  | HTMLInputElement
+                  | HTMLTextAreaElement;
+                const textLike = [
+                  "text",
+                  "tel",
+                  "email",
+                  "search",
+                  "password",
+                  "url",
+                  "number",
+                ];
+                const isTextInput =
+                  target.tagName === "TEXTAREA" ||
+                  (target.tagName === "INPUT" &&
+                    textLike.includes((target as HTMLInputElement).type));
+                if (isTextInput) return;
+                const form = e.currentTarget;
+                if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+                autoSaveTimer.current = setTimeout(() => {
+                  form.requestSubmit();
+                }, 300);
               }}
               className="flex flex-col gap-4"
             >
@@ -465,15 +496,9 @@ export function LeadCockpit({
               </div>
               <div className="flex flex-col gap-[7px]">
                 <FieldLabel htmlFor="d-cb">Next callback</FieldLabel>
-                <Input
+                <CallbackDateTimeInput
                   id="d-cb"
-                  name="next_callback_at"
-                  type="datetime-local"
-                  defaultValue={
-                    lead.next_callback_at
-                      ? new Date(lead.next_callback_at).toISOString().slice(0, 16)
-                      : ""
-                  }
+                  defaultValueIso={lead.next_callback_at}
                 />
               </div>
 
@@ -542,10 +567,22 @@ function StageDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
   const current = stages.find((s) => s.id === selected);
+  // Programmatically dispatch a native 'input' event on the hidden input
+  // so the parent form's onChange handler picks it up and autosaves.
+  // React's controlled-value update does NOT dispatch native events, so
+  // without this the stage change happens silently and never persists.
+  function pickStage(id: string) {
+    setSelected(id);
+    setOpen(false);
+    requestAnimationFrame(() => {
+      inputRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
   return (
     <div className="relative">
-      <input type="hidden" name={name} value={selected} />
+      <input ref={inputRef} type="hidden" name={name} value={selected} />
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -572,10 +609,7 @@ function StageDropdown({
             <button
               key={s.id}
               type="button"
-              onClick={() => {
-                setSelected(s.id);
-                setOpen(false);
-              }}
+              onClick={() => pickStage(s.id)}
               className="w-full flex items-center gap-2 px-3 py-2 text-[13.5px] hover:bg-brand-bg text-left"
               style={{ color: s.color }}
             >
@@ -910,9 +944,7 @@ function LogCallForm({
 }) {
   const [outcome, setOutcome] = useState(lastCallLog.outcome);
   const [callbackAt, setCallbackAt] = useState(() =>
-    lastCallLog.nextCallbackAt
-      ? new Date(lastCallLog.nextCallbackAt).toISOString().slice(0, 16)
-      : "",
+    isoToLocalInput(lastCallLog.nextCallbackAt),
   );
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -924,7 +956,7 @@ function LogCallForm({
     timer.current = setTimeout(async () => {
       const fd = new FormData();
       fd.set("outcome", nextOutcome);
-      if (nextCallback) fd.set("next_callback_at", nextCallback);
+      if (nextCallback) fd.set("next_callback_at", localInputToIso(nextCallback));
       try {
         await logCallOutcomeAction(leadId, fd);
         setStatus("saved");

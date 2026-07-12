@@ -61,6 +61,27 @@ export function netAfterGst(gross: number): number {
   return gross / (1 + INCENTIVE_GST_RATE);
 }
 
+// Convert a UTC ISO from the DB into a "YYYY-MM-DDTHH:MM" wall-clock string
+// suitable for <input type="datetime-local">. Uses the browser's local
+// timezone so what the user typed comes back looking identical.
+export function isoToLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Convert a wall-clock string from <input type="datetime-local"> to a proper
+// UTC ISO for the DB. Sending the naked wall-clock string lets Postgres pin
+// the wrong timezone, which was corrupting callback times by ±5h30m.
+export function localInputToIso(local: string | null | undefined): string {
+  if (!local) return "";
+  const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString();
+}
+
 export function slugifyKey(input: string): string {
   return input
     .toLowerCase()
