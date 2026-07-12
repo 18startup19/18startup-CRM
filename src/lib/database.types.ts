@@ -84,6 +84,7 @@ export interface PaymentPageRow {
   mode: "test" | "live";
   program_name: string | null;
   thank_you_url: string | null;
+  thank_you_button_label: string | null;
   cohort_id: string | null;
   pipeline_id: string | null;
   stage_id: string | null;

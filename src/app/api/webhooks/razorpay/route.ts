@@ -234,6 +234,10 @@ async function handlePaymentPagePayment(args: {
       method: payment.method,
       payment_page_id: page.id,
       payment_page_label: page.internal_label,
+      // Populate the lead's Program custom field (key: "program") so
+      // team members see which program the buyer purchased. Admin sets
+      // program_name on the payment page; not shown to the buyer.
+      ...(page.program_name ? { program: page.program_name } : {}),
       ...(cityFromForm ? { city: cityFromForm } : {}),
       ...mergedNotes,
     },

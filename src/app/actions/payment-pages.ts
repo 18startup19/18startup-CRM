@@ -48,6 +48,8 @@ export async function createPaymentPageAction(
   const mode: "test" | "live" = modeRaw === "live" ? "live" : "test";
   const program_name = String(fd.get("program_name") ?? "").trim() || null;
   const thank_you_url = String(fd.get("thank_you_url") ?? "").trim() || null;
+  const thank_you_button_label =
+    String(fd.get("thank_you_button_label") ?? "").trim() || null;
   const cohort_id = nullish(String(fd.get("cohort_id") ?? ""));
   const pipeline_id = nullish(String(fd.get("pipeline_id") ?? ""));
   const stage_id = nullish(String(fd.get("stage_id") ?? ""));
@@ -70,6 +72,7 @@ export async function createPaymentPageAction(
       mode,
       program_name,
       thank_you_url,
+      thank_you_button_label,
       cohort_id,
       pipeline_id,
       stage_id,
@@ -102,6 +105,8 @@ export async function updatePaymentPageAction(
   const amount_paise = parseAmountPaise(fd.get("amount_rupees"));
   const program_name = String(fd.get("program_name") ?? "").trim() || null;
   const thank_you_url = String(fd.get("thank_you_url") ?? "").trim() || null;
+  const thank_you_button_label =
+    String(fd.get("thank_you_button_label") ?? "").trim() || null;
   const cohort_id = nullish(String(fd.get("cohort_id") ?? ""));
   const pipeline_id = nullish(String(fd.get("pipeline_id") ?? ""));
   const stage_id = nullish(String(fd.get("stage_id") ?? ""));
@@ -122,6 +127,7 @@ export async function updatePaymentPageAction(
       amount_paise,
       program_name,
       thank_you_url,
+      thank_you_button_label,
       cohort_id,
       pipeline_id,
       stage_id,

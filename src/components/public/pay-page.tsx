@@ -5,12 +5,12 @@ import { useEffect, useRef, useState } from "react";
 interface Props {
   pageId: string;
   title: string;
-  programName: string | null;
   description: string | null;
   imageUrl: string | null;
   amountPaise: number;
   currency: string;
   thankYouUrl: string | null;
+  thankYouButtonLabel: string | null;
 }
 
 interface RazorpayCheckoutOptions {
@@ -45,12 +45,12 @@ declare global {
 export function PayPage({
   pageId,
   title,
-  programName,
   description,
   imageUrl,
   amountPaise,
   currency,
   thankYouUrl,
+  thankYouButtonLabel,
 }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -169,7 +169,7 @@ export function PayPage({
               rel="noopener noreferrer"
               className="inline-block w-full bg-brand-orange text-white text-[15px] font-bold py-3 rounded-[10px] hover:bg-brand-orange-dark transition-colors mt-2"
             >
-              Continue →
+              {thankYouButtonLabel?.trim() || "Continue →"}
             </a>
           ) : (
             <p className="text-[12px] text-brand-dark-text">
@@ -192,11 +192,6 @@ export function PayPage({
           />
         )}
         <div className="p-6">
-          {programName && (
-            <div className="inline-block text-[11px] font-bold uppercase tracking-[0.5px] text-brand-orange bg-brand-orange/10 rounded-full px-2.5 py-1 mb-2">
-              {programName}
-            </div>
-          )}
           <h1 className="text-[22px] font-bold text-brand-charcoal">{title}</h1>
           {description && (
             <p className="text-[14px] text-brand-dark-text mt-2 whitespace-pre-wrap">
