@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { logoutAction } from "@/app/actions/auth";
+import { CallbackReminders } from "@/components/callback-reminders";
 import type { Session } from "@/lib/session-types";
 
 interface NavItem {
@@ -236,6 +237,7 @@ export function AppShell({
         </div>
         {children}
       </main>
+      <CallbackReminders />
     </div>
   );
 }
