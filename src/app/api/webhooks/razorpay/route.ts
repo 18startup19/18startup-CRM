@@ -20,24 +20,41 @@ import type {
 // customer is a real qualified lead.
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (!secret) {
+  // Support two independent webhook secrets side-by-side so live and test
+  // Razorpay webhooks can each have their own value:
+  //   RAZORPAY_WEBHOOK_SECRET       — live webhook (existing)
+  //   RAZORPAY_WEBHOOK_SECRET_TEST  — test-mode webhook (added later)
+  // Either one verifying the incoming signature is enough. Missing envs
+  // are skipped rather than treated as an error, so admins don't need
+  // both configured on day one.
+  const secrets = [
+    process.env.RAZORPAY_WEBHOOK_SECRET,
+    process.env.RAZORPAY_WEBHOOK_SECRET_TEST,
+  ].filter((s): s is string => typeof s === "string" && s.length > 0);
+  if (secrets.length === 0) {
     return Response.json(
-      { ok: false, error: "RAZORPAY_WEBHOOK_SECRET not configured on CRM." },
+      {
+        ok: false,
+        error:
+          "Neither RAZORPAY_WEBHOOK_SECRET nor RAZORPAY_WEBHOOK_SECRET_TEST configured on CRM.",
+      },
       { status: 500 },
     );
   }
 
   const raw = await req.text();
   const provided = req.headers.get("x-razorpay-signature") ?? "";
-  const expected = createHmac("sha256", secret).update(raw).digest("hex");
-
   const providedBuf = Buffer.from(provided);
-  const expectedBuf = Buffer.from(expected);
-  if (
-    providedBuf.length !== expectedBuf.length ||
-    !timingSafeEqual(providedBuf, expectedBuf)
-  ) {
+
+  const matched = secrets.some((s) => {
+    const expected = createHmac("sha256", s).update(raw).digest("hex");
+    const expectedBuf = Buffer.from(expected);
+    return (
+      providedBuf.length === expectedBuf.length &&
+      timingSafeEqual(providedBuf, expectedBuf)
+    );
+  });
+  if (!matched) {
     return Response.json({ ok: false, error: "bad signature" }, { status: 401 });
   }
 
