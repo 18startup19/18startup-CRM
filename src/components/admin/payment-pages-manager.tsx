@@ -357,15 +357,31 @@ function PageForm({
           )}
         </div>
 
-        <div className="flex flex-col gap-[7px]">
-          <FieldLabel htmlFor="title">Buyer-facing title</FieldLabel>
-          <Input
-            id="title"
-            name="title"
-            required
-            defaultValue={page?.title ?? ""}
-            placeholder="Idea Validation Workshop"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-[7px]">
+            <FieldLabel htmlFor="title">Buyer-facing title</FieldLabel>
+            <Input
+              id="title"
+              name="title"
+              required
+              defaultValue={page?.title ?? ""}
+              placeholder="Idea Validation Workshop"
+            />
+          </div>
+          <div className="flex flex-col gap-[7px]">
+            <FieldLabel htmlFor="program_name">
+              Program name
+              <span className="text-brand-dark-text font-normal ml-1">
+                (shown to buyer)
+              </span>
+            </FieldLabel>
+            <Input
+              id="program_name"
+              name="program_name"
+              defaultValue={page?.program_name ?? ""}
+              placeholder="Founders Program"
+            />
+          </div>
         </div>
 
         <div className="flex flex-col gap-[7px]">
@@ -413,6 +429,23 @@ function PageForm({
               placeholder="https://…"
             />
           </div>
+        </div>
+
+        <div className="flex flex-col gap-[7px]">
+          <FieldLabel htmlFor="thank_you_url">
+            Thank-you redirect URL
+            <span className="text-brand-dark-text font-normal ml-1">
+              (after successful payment, buyer sees a &quot;Continue&quot; button
+              that opens this)
+            </span>
+          </FieldLabel>
+          <Input
+            id="thank_you_url"
+            name="thank_you_url"
+            type="url"
+            defaultValue={page?.thank_you_url ?? ""}
+            placeholder="https://your-site.com/thank-you"
+          />
         </div>
 
         <div className="border-t border-brand-border pt-4 mt-2">

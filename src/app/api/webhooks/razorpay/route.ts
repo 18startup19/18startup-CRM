@@ -4,7 +4,6 @@ import { intakeLead } from "@/lib/intake";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { onboardLeadToLmsAction } from "@/app/actions/onboard";
 import type {
-  CohortRow,
   IntakeSettingsRow,
   PaymentPageRow,
 } from "@/lib/database.types";
@@ -245,49 +244,15 @@ async function handlePaymentPagePayment(args: {
 
   const leadId = intake.leadId;
 
-  // Record the payment on the Converted Leads log. Cohort-tied → cohort_number
-  // is the cohort's `number`; small workshop → payment page's label as a
-  // synthetic cohort tag so it still shows up grouped in reports.
-  let cohortNumber: string | null = null;
-  if (page.cohort_id) {
-    const { data: cohort } = await sb
-      .from("cohorts")
-      .select("number")
-      .eq("id", page.cohort_id)
-      .maybeSingle<Pick<CohortRow, "number">>();
-    cohortNumber = cohort?.number ?? null;
-  }
+  // Amount lives on `lead.custom` (stamped by intakeLead) so it's queryable
+  // in the DB but not surfaced in the Converted Leads / Amount UI columns.
+  // Per user's request (2026-07-12): don't write to lead_amounts and don't
+  // set total_fee — payment-page payments must be invisible in the
+  // front-end amount columns until the user decides where to surface them.
 
-  if (amountRupees && amountRupees > 0) {
-    await sb.from("lead_amounts").insert({
-      lead_id: leadId,
-      actor_id: null,
-      amount: amountRupees,
-      note: `Auto-recorded from ${page.internal_label}`,
-      cohort_number: cohortNumber ?? page.internal_label,
-    });
-    await sb
-      .from("leads")
-      .update({ total_fee: amountRupees })
-      .eq("id", leadId);
-
-    await sb.from("lead_activities").insert({
-      lead_id: leadId,
-      actor_id: null,
-      kind: "converted",
-      payload: {
-        amount: amountRupees,
-        cohort_number: cohortNumber ?? page.internal_label,
-        total_fee: amountRupees,
-        source: "razorpay_payment_page",
-        payment_page_id: page.id,
-      },
-    });
-  }
-
-  // Cohort-tied page → LMS onboarding runs on payment.captured, since the
-  // page charges the full fee. Log-only on failure so a broken LMS doesn't
-  // 500 back at Razorpay.
+  // Cohort-tied page → LMS onboarding still runs, since the page charges
+  // the full fee and this is the CRM's "purchase confirmed" signal.
+  // Log-only on failure so a broken LMS doesn't 500 back at Razorpay.
   if (page.cohort_id) {
     try {
       await onboardLeadToLmsAction(leadId, page.cohort_id, "auto");

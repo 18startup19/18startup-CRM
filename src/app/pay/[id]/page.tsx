@@ -39,10 +39,12 @@ export default async function BuyerPayPage({
     <PayPage
       pageId={data.id}
       title={data.title}
+      programName={data.program_name}
       description={data.description}
       imageUrl={data.image_url}
       amountPaise={data.amount_paise}
       currency={data.currency}
+      thankYouUrl={data.thank_you_url}
     />
   );
 }
