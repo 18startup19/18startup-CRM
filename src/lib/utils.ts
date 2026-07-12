@@ -90,6 +90,17 @@ export function slugifyKey(input: string): string {
     .slice(0, 40);
 }
 
+// URL-friendly slug (dashes, lowercase, ASCII only). Used for payment page
+// URLs so /pay/idea-validation-workshop replaces /pay/<uuid>.
+export function slugifyUrl(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
 // Merge lead's custom values with a template body, replacing {{name}}, {{email}},
 // {{phone}}, and {{custom.<key>}} tokens. Missing values render as empty string.
 export function renderTemplate(

@@ -40,10 +40,11 @@ export async function POST(
   }
 
   const sb = supabaseAdmin();
-  const { data: page } = await sb
-    .from("payment_pages")
-    .select("*")
-    .eq("id", id)
+  // Slug or UUID — same shape check as the public page route.
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  const q = sb.from("payment_pages").select("*");
+  const { data: page } = await (isUuid ? q.eq("id", id) : q.eq("slug", id))
     .maybeSingle<PaymentPageRow>();
   if (!page) {
     return Response.json(

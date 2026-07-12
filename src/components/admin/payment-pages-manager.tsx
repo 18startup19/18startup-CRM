@@ -172,8 +172,11 @@ function PageRow({
     // isn't set, so dev + preview deploys still work with no configuration.
     const payDomain = process.env.NEXT_PUBLIC_PAY_DOMAIN?.trim();
     const base = payDomain ? `https://${payDomain}` : window.location.origin;
-    setPublicUrl(`${base}/pay/${page.id}`);
-  }, [page.id]);
+    // Use the slug when available so the URL reads like /pay/idea-workshop
+    // instead of /pay/<uuid>. Falls back to id for backward compat with any
+    // legacy row that hasn't been slug-backfilled yet.
+    setPublicUrl(`${base}/pay/${page.slug || page.id}`);
+  }, [page.id, page.slug]);
 
   function copyUrl() {
     if (!publicUrl) return;
@@ -387,6 +390,23 @@ function PageForm({
               placeholder="Founders Program"
             />
           </div>
+        </div>
+
+        <div className="flex flex-col gap-[7px]">
+          <FieldLabel htmlFor="slug">
+            URL slug
+            <span className="text-brand-dark-text font-normal ml-1">
+              {page
+                ? "(changing this breaks any existing links you've shared)"
+                : "(auto-filled from the label — override if you want a shorter URL)"}
+            </span>
+          </FieldLabel>
+          <Input
+            id="slug"
+            name="slug"
+            defaultValue={page?.slug ?? ""}
+            placeholder="idea-validation-workshop"
+          />
         </div>
 
         <div className="flex flex-col gap-[7px]">

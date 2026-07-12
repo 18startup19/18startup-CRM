@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/rbac-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { slugifyUrl } from "@/lib/utils";
 import type { PaymentPageRow } from "@/lib/database.types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type PaymentPageActionResult =
   | { ok: true; id: string }
@@ -30,6 +32,29 @@ function parseTags(raw: unknown): string[] {
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
+}
+
+// Find a slug that doesn't collide with any existing payment_pages row.
+// Starts with the requested slug, then appends -2, -3, ... until unique.
+// Never blocks — worst case an oddly-branded page ends up with -2 suffix.
+async function findAvailableSlug(
+  sb: SupabaseClient,
+  base: string,
+  excludeId: string | null,
+): Promise<string> {
+  const safeBase = base || "page";
+  let candidate = safeBase;
+  let n = 1;
+  while (n < 200) {
+    let q = sb.from("payment_pages").select("id").eq("slug", candidate);
+    if (excludeId) q = q.neq("id", excludeId);
+    const { data } = await q.limit(1);
+    if (!data || data.length === 0) return candidate;
+    n++;
+    candidate = `${safeBase}-${n}`;
+  }
+  // Fallback: pick a truly random one so we never spin forever.
+  return `${safeBase}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function createPaymentPageAction(
@@ -60,10 +85,17 @@ export async function createPaymentPageAction(
   if (!title) return { ok: false, error: "Buyer-facing title required" };
   if (!amount_paise) return { ok: false, error: "Amount must be > 0" };
 
+  // Auto-generate a URL slug from the internal label. If admin typed an
+  // explicit slug in the form, use that as the base instead.
+  const rawSlug = String(fd.get("slug") ?? "").trim();
+  const slugBase = slugifyUrl(rawSlug || internal_label);
+  const slug = await findAvailableSlug(sb, slugBase, null);
+
   const { data: inserted, error: insertError } = await sb
     .from("payment_pages")
     .insert({
       internal_label,
+      slug,
       title,
       description,
       image_url,
@@ -117,10 +149,21 @@ export async function updatePaymentPageAction(
   if (!title) return { ok: false, error: "Buyer-facing title required" };
   if (!amount_paise) return { ok: false, error: "Amount must be > 0" };
 
+  // Slug: only regenerate if admin actually changed it in the form.
+  // Renaming the internal_label alone must NOT change the URL, since
+  // that would silently break Webflow buttons already pointing to it.
+  const rawSlug = String(fd.get("slug") ?? "").trim();
+  let slug: string | undefined;
+  if (rawSlug) {
+    const slugBase = slugifyUrl(rawSlug);
+    slug = await findAvailableSlug(sb, slugBase, id);
+  }
+
   const { error: upErr } = await sb
     .from("payment_pages")
     .update({
       internal_label,
+      ...(slug ? { slug } : {}),
       title,
       description,
       image_url,

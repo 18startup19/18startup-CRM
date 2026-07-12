@@ -75,6 +75,7 @@ export interface CohortRow {
 
 export interface PaymentPageRow {
   id: string;
+  slug: string | null;
   internal_label: string;
   title: string;
   description: string | null;

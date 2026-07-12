@@ -12,10 +12,14 @@ export default async function BuyerPayPage({
 }) {
   const { id } = await params;
   const sb = supabaseAdmin();
-  const { data } = await sb
-    .from("payment_pages")
-    .select("*")
-    .eq("id", id)
+  // Accept slug OR UUID so both the friendly /pay/idea-workshop URLs and
+  // any legacy /pay/<uuid> links (already pasted in Webflow) resolve. We
+  // branch on shape because Postgres would reject a non-UUID literal cast
+  // against the `id` column.
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  const q = sb.from("payment_pages").select("*");
+  const { data } = await (isUuid ? q.eq("id", id) : q.eq("slug", id))
     .maybeSingle<PaymentPageRow>();
   if (!data) return notFound();
 
