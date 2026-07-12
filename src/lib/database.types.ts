@@ -73,6 +73,27 @@ export interface CohortRow {
   updated_at: string;
 }
 
+export interface PaymentPageRow {
+  id: string;
+  internal_label: string;
+  title: string;
+  description: string | null;
+  image_url: string | null;
+  amount_paise: number;
+  currency: string;
+  mode: "test" | "live";
+  cohort_id: string | null;
+  pipeline_id: string | null;
+  stage_id: string | null;
+  owner_id: string | null;
+  tags: string[];
+  razorpay_page_id: string | null;
+  razorpay_short_url: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface LeadFieldMappingRow {
   id: string;
   source: "webflow" | "razorpay";

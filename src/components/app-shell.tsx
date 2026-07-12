@@ -56,6 +56,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/cohorts", label: "Cohort Onboarding", icon: IndianRupee },
   { href: "/admin/workflows", label: "Workflows", icon: Workflow },
   { href: "/admin/lead-routing", label: "Lead Routing", icon: Route },
+  { href: "/admin/payment-pages", label: "Payment Pages", icon: IndianRupee },
   { href: "/admin/integrations", label: "Integrations", icon: Settings },
 ];
 

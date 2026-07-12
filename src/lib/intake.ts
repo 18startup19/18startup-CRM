@@ -21,6 +21,14 @@ export async function intakeLead(
     // Otherwise falls back to intake_settings.fallback_stage_id, then to the
     // CRM's leftmost open stage.
     routingKey?: string | null;
+    // Direct routing override — used by Payment Pages, where the page row
+    // already carries stage/owner/tags and there's no need to consult
+    // lead_routing_rules. When set, `routingKey` is ignored for resolution.
+    override?: {
+      stageId?: string | null;
+      ownerId?: string | null;
+      tags?: string[];
+    };
   },
   systemActorId: string | null = null,
 ): Promise<{
@@ -37,10 +45,16 @@ export async function intakeLead(
   const normalizedPhone = normalizePhone(input.phone ?? null);
   const normalizedEmail = input.email?.trim().toLowerCase() || null;
 
-  const { stageId: targetStageId, matchedRuleId } = await resolveTargetStage(
-    input.source,
-    input.routingKey ?? null,
-  );
+  let targetStageId: string | null;
+  let matchedRuleId: string | null;
+  if (input.override) {
+    targetStageId = input.override.stageId ?? (await resolveTargetStage(input.source, null)).stageId;
+    matchedRuleId = null;
+  } else {
+    const resolved = await resolveTargetStage(input.source, input.routingKey ?? null);
+    targetStageId = resolved.stageId;
+    matchedRuleId = resolved.matchedRuleId;
+  }
 
   // Stash the routing key on custom so the admin page can discover
   // unmatched values ("we saw this form 8 times last week — add a rule?").
@@ -58,6 +72,8 @@ export async function intakeLead(
       email: normalizedEmail,
       source: input.source,
       stage_id: targetStageId,
+      owner_id: input.override?.ownerId ?? null,
+      tags: input.override?.tags ?? [],
       custom: customWithRoute,
     })
     .select("*")
