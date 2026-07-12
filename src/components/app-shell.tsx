@@ -49,14 +49,10 @@ const memberNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutGrid },
   { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/stages", label: "Lead stages", icon: Layers },
-  { href: "/admin/fields", label: "Custom fields", icon: UserCog },
-  { href: "/admin/templates", label: "Templates", icon: MailIcon },
-  { href: "/admin/whatsapp-templates", label: "WhatsApp templates", icon: MessageSquare },
+  { href: "/admin/setup", label: "Setup", icon: UserCog },
+  { href: "/admin/message-templates", label: "Templates", icon: MailIcon },
   { href: "/admin/cohorts", label: "Cohort Onboarding", icon: IndianRupee },
-  { href: "/admin/workflows", label: "Workflows", icon: Workflow },
-  { href: "/admin/lead-routing", label: "Lead Routing", icon: Route },
-  { href: "/admin/payment-pages", label: "Payment Pages", icon: IndianRupee },
+  { href: "/admin/leads-inflow", label: "Leads Inflow", icon: Route },
   { href: "/admin/integrations", label: "Integrations", icon: Settings },
 ];
 

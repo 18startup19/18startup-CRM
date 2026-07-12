@@ -269,7 +269,7 @@ export default async function LeadRoutingPage() {
   return (
     <>
       <PageHeader
-        title="Lead Routing"
+        title="Workflow Lead Routing"
         subtitle="Send each Razorpay payment page and each Webflow form to its own stage. Fallback catches anything unmatched."
       />
       <div className="p-8 flex flex-col gap-6">

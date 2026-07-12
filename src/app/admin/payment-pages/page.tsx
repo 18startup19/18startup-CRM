@@ -37,7 +37,7 @@ export default async function AdminPaymentPagesPage() {
   return (
     <>
       <PageHeader
-        title="Payment Pages"
+        title="Razorpay Payment Pages"
         subtitle="Create a payment page and paste its URL into your website buttons. Each page defines the price, the buyer form, and where the resulting lead lands in the CRM. Payments are processed by Razorpay."
       />
       <div className="p-8">
