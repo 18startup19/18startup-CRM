@@ -163,13 +163,17 @@ function PageRow({
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [pending, startTransition] = useTransition();
-  const [origin, setOrigin] = useState<string>("");
+  const [publicUrl, setPublicUrl] = useState<string>("");
 
   useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
-  const publicUrl = origin ? `${origin}/pay/${page.id}` : "";
+    // Prefer NEXT_PUBLIC_PAY_DOMAIN so admins see (and share) the branded
+    // pay.<...> URL for buyer-facing links even though the CRM console lives
+    // on a different host. Falls back to the current origin when the env
+    // isn't set, so dev + preview deploys still work with no configuration.
+    const payDomain = process.env.NEXT_PUBLIC_PAY_DOMAIN?.trim();
+    const base = payDomain ? `https://${payDomain}` : window.location.origin;
+    setPublicUrl(`${base}/pay/${page.id}`);
+  }, [page.id]);
 
   function copyUrl() {
     if (!publicUrl) return;
