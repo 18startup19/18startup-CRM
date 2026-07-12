@@ -24,6 +24,7 @@ import {
   Menu,
   X,
   Route,
+  BookUser,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { logoutAction } from "@/app/actions/auth";
@@ -34,11 +35,20 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
+  // When set, hides this item unless session.role is included. Absent =
+  // visible to everyone (member/manager/admin).
+  roles?: Session["role"][];
 }
 
 const memberNav: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/leads/kanban", label: "Leads", icon: Layers },
+  {
+    href: "/contacts",
+    label: "Contacts",
+    icon: BookUser,
+    roles: ["admin", "manager"],
+  },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/leads/callbacks", label: "My Callbacks", icon: ListChecks },
   { href: "/converted-leads", label: "Converted leads", icon: IndianRupee },
@@ -68,7 +78,10 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const nav = section === "admin" ? adminNav : memberNav;
+  const rawNav = section === "admin" ? adminNav : memberNav;
+  const nav = rawNav.filter(
+    (item) => !item.roles || item.roles.includes(session.role),
+  );
 
   // Desktop collapse persists to localStorage. Mobile drawer is transient —
   // opens over the content, closes on nav or scrim tap.
