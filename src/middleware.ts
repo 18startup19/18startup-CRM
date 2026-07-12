@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// If a request arrives on the "pay" subdomain (e.g. pay.18startup.com) for a
-// URL that isn't a buyer-payment path, redirect it to the CRM console on the
-// main domain. Keeps `pay.<...>` scoped to what buyers should ever see:
-// only /pay/[id] and its supporting /api/pay/[id]/create-order endpoint.
+// Traffic on the "pay" subdomain (e.g. pay.18startup.com) is scoped to
+// buyers only. Three cases:
+//   1. /pay/<id> and /api/pay/<id>/... → pass through unchanged.
+//   2. /<slug> (anything that looks like a slug) → REWRITE to /pay/<slug>,
+//      so buyers see the clean URL pay.<...>/<slug> while Next still hits
+//      the /pay/[id] route internally. The browser address bar stays clean.
+//   3. Anything else (/, /admin, /leads, /signin, etc.) → REDIRECT to the
+//      CRM console on the main domain (crm.<...>/<path>).
 //
 // Config:
 //   NEXT_PUBLIC_PAY_DOMAIN=pay.18startup.com   ← the pay subdomain
@@ -21,14 +25,31 @@ export function middleware(req: NextRequest) {
   if (host !== payDomain.toLowerCase()) return NextResponse.next();
 
   const path = req.nextUrl.pathname;
-  const allowed =
+
+  // Case 1: already targeting the buyer-facing route / API. Pass through.
+  if (
     path.startsWith("/pay/") ||
     path.startsWith("/api/pay/") ||
     path.startsWith("/_next/") ||
-    path === "/favicon.ico";
-  if (allowed) return NextResponse.next();
+    path === "/favicon.ico"
+  ) {
+    return NextResponse.next();
+  }
 
-  // Anything else on pay.<...> gets sent to the CRM console at the same path.
+  // Case 2: single-segment slug-shaped path — rewrite to /pay/<slug> so
+  // Next serves the buyer-facing page but the browser URL stays clean.
+  // Allows lowercase alphanumeric + dashes + underscores, plus UUID for
+  // legacy links. Anything else (multi-segment paths, weird chars) falls
+  // through to the redirect.
+  const slugMatch = path.match(/^\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,80})$/);
+  if (slugMatch) {
+    const url = req.nextUrl.clone();
+    url.pathname = `/pay/${slugMatch[1]}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // Case 3: anything else on pay.<...> gets sent to the CRM console at the
+  // same path — /admin, /leads, and other console routes.
   const target = new URL(req.nextUrl.toString());
   target.host = crmDomain;
   target.protocol = "https:";

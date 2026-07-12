@@ -168,14 +168,17 @@ function PageRow({
   useEffect(() => {
     // Prefer NEXT_PUBLIC_PAY_DOMAIN so admins see (and share) the branded
     // pay.<...> URL for buyer-facing links even though the CRM console lives
-    // on a different host. Falls back to the current origin when the env
-    // isn't set, so dev + preview deploys still work with no configuration.
+    // on a different host. On the pay subdomain the middleware rewrites
+    // /<slug> → /pay/<slug>, so we drop the /pay/ prefix from the shared
+    // URL for a cleaner look (pay.18startup.com/idea-workshop). On any
+    // other origin (localhost, preview, CRM domain) we keep /pay/ so the
+    // link still resolves.
     const payDomain = process.env.NEXT_PUBLIC_PAY_DOMAIN?.trim();
-    const base = payDomain ? `https://${payDomain}` : window.location.origin;
-    // Use the slug when available so the URL reads like /pay/idea-workshop
-    // instead of /pay/<uuid>. Falls back to id for backward compat with any
-    // legacy row that hasn't been slug-backfilled yet.
-    setPublicUrl(`${base}/pay/${page.slug || page.id}`);
+    const key = page.slug || page.id;
+    const url = payDomain
+      ? `https://${payDomain}/${key}`
+      : `${window.location.origin}/pay/${key}`;
+    setPublicUrl(url);
   }, [page.id, page.slug]);
 
   function copyUrl() {
