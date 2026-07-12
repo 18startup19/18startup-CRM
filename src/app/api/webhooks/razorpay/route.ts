@@ -60,7 +60,19 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: false, error: "missing payment entity" }, { status: 400 });
   }
 
-  const name = (payment.notes?.name as string) || (payment.email?.split("@")[0] ?? "").trim() || "Razorpay lead";
+  // Notes get stamped on the ORDER when we create it (from /api/pay/[id]/
+  // create-order) and Razorpay may or may not mirror them onto the payment
+  // depending on flow. Read from both — payment.notes wins if present.
+  const orderNotes = body.payload?.order?.entity?.notes ?? {};
+  const mergedNotes: Record<string, unknown> = {
+    ...orderNotes,
+    ...(payment.notes ?? {}),
+  };
+
+  const name =
+    (mergedNotes.name as string) ||
+    (payment.email?.split("@")[0] ?? "").trim() ||
+    "Razorpay lead";
   const amountRupees = typeof payment.amount === "number" ? payment.amount / 100 : null;
 
   // Routing key = payment description ("Founders Workshop July 2026" etc).
@@ -70,13 +82,13 @@ export async function POST(req: NextRequest) {
 
   const sb = supabaseAdmin();
 
-  // Payment Pages path: if the payment carries a payment_page_crm_id in
-  // notes (stamped there when we created the page via Razorpay's API), we
-  // skip routing rules entirely and use the page's own configuration —
+  // Payment Pages path: if the order/payment carries a payment_page_crm_id
+  // in notes (stamped when the buyer's browser called /api/pay/[id]/create-
+  // order), we skip routing rules and use the page's own configuration —
   // pipeline/stage/owner/tags/cohort come from the payment_pages row.
   const crmPageId =
-    typeof payment.notes?.payment_page_crm_id === "string"
-      ? (payment.notes.payment_page_crm_id as string)
+    typeof mergedNotes.payment_page_crm_id === "string"
+      ? (mergedNotes.payment_page_crm_id as string)
       : null;
   if (crmPageId) {
     const { data: page } = await sb
@@ -89,6 +101,7 @@ export async function POST(req: NextRequest) {
         sb,
         page,
         payment,
+        mergedNotes,
         amountRupees,
         name,
       });
@@ -171,20 +184,25 @@ async function handlePaymentPagePayment(args: {
     NonNullable<RazorpayWebhookBody["payload"]>["payment"]
   >["entity"] &
     object;
+  mergedNotes: Record<string, unknown>;
   amountRupees: number | null;
   name: string;
 }) {
-  const { sb, page, payment, amountRupees, name } = args;
+  const { sb, page, payment, mergedNotes, amountRupees, name } = args;
 
-  const cityFromForm =
-    typeof payment.notes?.city === "string"
-      ? (payment.notes.city as string)
-      : null;
+  const asStr = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+  const phoneFromForm = asStr(mergedNotes.phone);
+  const emailFromForm = asStr(mergedNotes.email);
+  const cityFromForm = asStr(mergedNotes.city);
 
   const intake = await intakeLead({
     name,
-    phone: payment.contact ?? null,
-    email: payment.email ?? null,
+    // Prefer the phone/email the buyer typed on our page over what Razorpay
+    // stores on the Payment entity — same value in the happy path, but our
+    // form is the authoritative source if they ever diverge.
+    phone: phoneFromForm ?? payment.contact ?? null,
+    email: emailFromForm ?? payment.email ?? null,
     source: "razorpay",
     routingKey: page.internal_label,
     override: {
@@ -201,7 +219,7 @@ async function handlePaymentPagePayment(args: {
       payment_page_id: page.id,
       payment_page_label: page.internal_label,
       ...(cityFromForm ? { city: cityFromForm } : {}),
-      ...(payment.notes ?? {}),
+      ...mergedNotes,
     },
   });
   if (!intake.ok || !intake.leadId) {
@@ -282,6 +300,14 @@ interface RazorpayWebhookBody {
         description?: string;
         email?: string;
         contact?: string;
+        notes?: Record<string, unknown>;
+      };
+    };
+    // On payment.captured events created against an Order, Razorpay
+    // includes the Order entity here. Its `notes` are what our
+    // /api/pay/[id]/create-order stamped when it created the Order.
+    order?: {
+      entity?: {
         notes?: Record<string, unknown>;
       };
     };

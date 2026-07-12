@@ -1,7 +1,9 @@
--- Payment Pages: CRM-owned records of hosted Razorpay payment pages the admin
--- creates and embeds on the website. Each row corresponds to exactly one
--- Razorpay Payment Page; the CRM is the source of truth for title/amount/etc,
--- and calls Razorpay's API to keep the hosted page in sync.
+-- Payment Pages: CRM-hosted buyer-facing pages the admin creates and embeds
+-- on the website (via /pay/<id>). Each page is a record of what to show the
+-- buyer (title/amount/etc) plus the lead-routing to apply when the payment
+-- lands. Razorpay is only used for the actual payment step via its Orders
+-- API — we do NOT rely on Razorpay's own "Payment Pages" product, which is
+-- gated behind account activation.
 
 create table if not exists payment_pages (
   id uuid primary key default gen_random_uuid(),
@@ -35,12 +37,8 @@ create table if not exists payment_pages (
   owner_id uuid references users(id) on delete set null,
   tags text[] not null default '{}',
 
-  -- Filled in after the first successful call to Razorpay's create-page API.
-  razorpay_page_id text,
-  razorpay_short_url text,
-
-  -- Off = new payments blocked at the Razorpay hosted page; existing rows
-  -- stay for audit.
+  -- Off = the public /pay/<id> route returns a friendly "this page is not
+  -- accepting payments right now" message; existing lead rows stay untouched.
   is_active boolean not null default true,
 
   created_at timestamptz not null default now(),
@@ -48,5 +46,4 @@ create table if not exists payment_pages (
 );
 
 create index if not exists payment_pages_active_idx on payment_pages (is_active);
-create index if not exists payment_pages_razorpay_page_id_idx on payment_pages (razorpay_page_id);
 create index if not exists payment_pages_cohort_idx on payment_pages (cohort_id);

@@ -3,15 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/rbac-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import {
-  createPaymentPage,
-  deactivatePaymentPage,
-  updatePaymentPage,
-} from "@/lib/razorpay-pages";
 import type { PaymentPageRow } from "@/lib/database.types";
 
 export type PaymentPageActionResult =
-  | { ok: true; id: string; shortUrl?: string }
+  | { ok: true; id: string }
   | { ok: false; error: string };
 
 // Read `amount` from FormData (in RUPEES per the UI) and convert to paise
@@ -61,9 +56,6 @@ export async function createPaymentPageAction(
   if (!title) return { ok: false, error: "Buyer-facing title required" };
   if (!amount_paise) return { ok: false, error: "Amount must be > 0" };
 
-  // Insert first — we need the row's UUID to stamp into Razorpay's notes so
-  // the webhook can map back. If the Razorpay call fails, we roll the row
-  // back so the admin isn't left with a ghost that has no hosted page.
   const { data: inserted, error: insertError } = await sb
     .from("payment_pages")
     .insert({
@@ -87,36 +79,8 @@ export async function createPaymentPageAction(
     return { ok: false, error: insertError?.message ?? "Insert failed" };
   }
 
-  try {
-    const { razorpayPageId, shortUrl } = await createPaymentPage(
-      {
-        title,
-        description,
-        imageUrl: image_url,
-        amountPaise: amount_paise,
-        currency: "INR",
-        crmPageId: inserted.id,
-      },
-      mode,
-    );
-    await sb
-      .from("payment_pages")
-      .update({
-        razorpay_page_id: razorpayPageId,
-        razorpay_short_url: shortUrl,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", inserted.id);
-    revalidatePath("/admin/payment-pages");
-    return { ok: true, id: inserted.id, shortUrl };
-  } catch (err) {
-    // Roll back so admins can retry cleanly.
-    await sb.from("payment_pages").delete().eq("id", inserted.id);
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Razorpay call failed",
-    };
-  }
+  revalidatePath("/admin/payment-pages");
+  return { ok: true, id: inserted.id };
 }
 
 export async function updatePaymentPageAction(
@@ -126,13 +90,6 @@ export async function updatePaymentPageAction(
 ): Promise<PaymentPageActionResult> {
   await requireAdmin();
   const sb = supabaseAdmin();
-
-  const { data: existing } = await sb
-    .from("payment_pages")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle<PaymentPageRow>();
-  if (!existing) return { ok: false, error: "Page not found" };
 
   const internal_label = String(fd.get("internal_label") ?? "").trim();
   const title = String(fd.get("title") ?? "").trim();
@@ -149,8 +106,6 @@ export async function updatePaymentPageAction(
   if (!title) return { ok: false, error: "Buyer-facing title required" };
   if (!amount_paise) return { ok: false, error: "Amount must be > 0" };
 
-  // Update the DB first, then mirror to Razorpay. If Razorpay fails, restore
-  // the previous values so DB and hosted page don't drift.
   const { error: upErr } = await sb
     .from("payment_pages")
     .update({
@@ -169,43 +124,8 @@ export async function updatePaymentPageAction(
     .eq("id", id);
   if (upErr) return { ok: false, error: upErr.message };
 
-  if (existing.razorpay_page_id) {
-    try {
-      await updatePaymentPage(
-        existing.razorpay_page_id,
-        {
-          title,
-          description,
-          imageUrl: image_url,
-          amountPaise: amount_paise,
-        },
-        existing.mode,
-      );
-    } catch (err) {
-      // Restore previous values.
-      await sb
-        .from("payment_pages")
-        .update({
-          internal_label: existing.internal_label,
-          title: existing.title,
-          description: existing.description,
-          image_url: existing.image_url,
-          amount_paise: existing.amount_paise,
-          cohort_id: existing.cohort_id,
-          pipeline_id: existing.pipeline_id,
-          stage_id: existing.stage_id,
-          owner_id: existing.owner_id,
-          tags: existing.tags,
-        })
-        .eq("id", id);
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "Razorpay sync failed",
-      };
-    }
-  }
-
   revalidatePath("/admin/payment-pages");
+  revalidatePath(`/pay/${id}`);
   return { ok: true, id };
 }
 
@@ -216,28 +136,13 @@ export async function togglePaymentPageActiveAction(
   await requireAdmin();
   const sb = supabaseAdmin();
 
-  const { data: existing } = await sb
-    .from("payment_pages")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle<PaymentPageRow>();
-  if (!existing) return { ok: false, error: "Page not found" };
-
-  if (!active && existing.razorpay_page_id) {
-    try {
-      await deactivatePaymentPage(existing.razorpay_page_id, existing.mode);
-    } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "Razorpay deactivate failed",
-      };
-    }
-  }
-
-  await sb
+  const { error } = await sb
     .from("payment_pages")
     .update({ is_active: active, updated_at: new Date().toISOString() })
     .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
   revalidatePath("/admin/payment-pages");
+  revalidatePath(`/pay/${id}`);
   return { ok: true, id };
 }

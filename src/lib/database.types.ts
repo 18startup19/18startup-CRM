@@ -87,8 +87,6 @@ export interface PaymentPageRow {
   stage_id: string | null;
   owner_id: string | null;
   tags: string[];
-  razorpay_page_id: string | null;
-  razorpay_short_url: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

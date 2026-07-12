@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Copy, ExternalLink, Pencil, Plus, Power, X } from "lucide-react";
 import {
   Card,
@@ -163,10 +163,17 @@ function PageRow({
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [pending, startTransition] = useTransition();
+  const [origin, setOrigin] = useState<string>("");
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  const publicUrl = origin ? `${origin}/pay/${page.id}` : "";
 
   function copyUrl() {
-    if (!page.razorpay_short_url) return;
-    navigator.clipboard.writeText(page.razorpay_short_url).then(() => {
+    if (!publicUrl) return;
+    navigator.clipboard.writeText(publicUrl).then(() => {
       setCopyState("copied");
       setTimeout(() => setCopyState("idle"), 1500);
     });
@@ -233,24 +240,26 @@ function PageRow({
           </button>
         </div>
       </div>
-      {page.razorpay_short_url && (
-        <div className="flex items-center gap-2 bg-brand-bg rounded-[8px] px-3 py-2">
-          <input
-            type="text"
-            readOnly
-            value={page.razorpay_short_url}
-            className="flex-1 bg-transparent text-[12px] text-brand-charcoal outline-none"
-          />
-          <button
-            type="button"
-            onClick={copyUrl}
-            className="flex items-center gap-1 text-[11px] font-bold text-brand-orange hover:text-brand-orange-dark"
-          >
-            <Copy size={12} />
-            {copyState === "copied" ? "Copied!" : "Copy"}
-          </button>
+      <div className="flex items-center gap-2 bg-brand-bg rounded-[8px] px-3 py-2">
+        <input
+          type="text"
+          readOnly
+          value={publicUrl}
+          placeholder="Loading URL…"
+          className="flex-1 bg-transparent text-[12px] text-brand-charcoal outline-none"
+        />
+        <button
+          type="button"
+          onClick={copyUrl}
+          disabled={!publicUrl}
+          className="flex items-center gap-1 text-[11px] font-bold text-brand-orange hover:text-brand-orange-dark disabled:opacity-40"
+        >
+          <Copy size={12} />
+          {copyState === "copied" ? "Copied!" : "Copy"}
+        </button>
+        {publicUrl && (
           <a
-            href={page.razorpay_short_url}
+            href={publicUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-[11px] font-bold text-brand-charcoal hover:text-brand-orange"
@@ -258,8 +267,8 @@ function PageRow({
             <ExternalLink size={12} />
             Open
           </a>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -505,7 +514,7 @@ function PageForm({
             {pending
               ? "Saving…"
               : mode === "create"
-                ? "Create page on Razorpay"
+                ? "Create page"
                 : "Save changes"}
           </Button>
         </div>

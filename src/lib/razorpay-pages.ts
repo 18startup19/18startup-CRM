@@ -1,15 +1,13 @@
-// Razorpay Payment Pages API adapter.
+// Razorpay Orders API — used at the moment a buyer clicks "Pay" on a
+// CRM-hosted payment page. We ask Razorpay to create an order for the
+// amount, stamp the CRM payment_page_id + buyer details on the order's
+// `notes`, and hand the resulting order_id back to Razorpay Checkout.js
+// on the browser. When the buyer completes payment, Razorpay's webhook
+// fires with those notes attached — that's how the CRM knows which page
+// a payment came from.
 //
-// Docs: https://razorpay.com/docs/payments/payment-pages/create-payment-pages/
-// via-apis/
-//
-// A Payment Page = a hosted page at pay.razorpay.com/<slug> that any buyer
-// can visit and pay through. Reusable across many buyers. We keep our own
-// row in `payment_pages` as the source of truth; this adapter mirrors edits
-// out to Razorpay so the hosted page stays in sync.
-//
-// Test vs live keys are picked per-call so admins can keep test pages
-// around forever without touching live traffic.
+// Note: we deliberately do NOT use Razorpay's Payment Pages product,
+// which is gated behind account activation. The Orders API is universal.
 
 interface RazorpayCredentials {
   keyId: string;
@@ -37,124 +35,50 @@ function authHeader({ keyId, keySecret }: RazorpayCredentials): string {
   return "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64");
 }
 
-const BASE = "https://api.razorpay.com/v1/payment_pages";
-
-export interface CreatePaymentPageInput {
-  title: string;
-  description?: string | null;
-  imageUrl?: string | null;
+export interface CreateOrderInput {
   amountPaise: number;
   currency: string;
-  // Stamped on every payment made via this page so the webhook can look up
-  // which CRM row it came from.
-  crmPageId: string;
+  // Everything we want stamped on the resulting payment for the webhook to
+  // pick up. Must include payment_page_crm_id + the buyer form fields.
+  notes: Record<string, string>;
 }
 
-export interface CreatePaymentPageResult {
-  razorpayPageId: string;
-  shortUrl: string;
+export interface CreateOrderResult {
+  orderId: string;
+  amountPaise: number;
+  currency: string;
+  keyId: string;
 }
 
-// The exact request body shape mirrors Razorpay's Payment Pages create API.
-// If Razorpay tweaks their API, adjust here — the rest of the app calls this
-// function and doesn't care about the wire format.
-function buildCreateBody(input: CreatePaymentPageInput) {
-  return {
-    title: input.title,
-    description: input.description ?? undefined,
-    image_url: input.imageUrl ?? undefined,
-    amount: input.amountPaise,
-    currency: input.currency,
-    // Fixed amount (buyer can't change it). We collect the four buyer fields
-    // — name/email/phone/city — via Razorpay's built-in "customer details"
-    // block; "city" ships as a custom field on the page.
-    view_options: {
-      allow_multiple_units: false,
-    },
-    // Custom "city" field on the buyer form. Name/email/phone are collected
-    // automatically by Razorpay's checkout.
-    settings: {
-      udf: [
-        { name: "city", title: "City", type: "string", required: true },
-      ],
-    },
-    notes: {
-      // Critical: how the CRM webhook maps an incoming payment back to a page.
-      payment_page_crm_id: input.crmPageId,
-    },
-  };
-}
-
-export async function createPaymentPage(
-  input: CreatePaymentPageInput,
+export async function createOrder(
+  input: CreateOrderInput,
   mode: "test" | "live",
-): Promise<CreatePaymentPageResult> {
+): Promise<CreateOrderResult> {
   const creds = razorpayKeysForMode(mode);
-  const res = await fetch(BASE, {
+  const res = await fetch("https://api.razorpay.com/v1/orders", {
     method: "POST",
     headers: {
       Authorization: authHeader(creds),
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(buildCreateBody(input)),
+    body: JSON.stringify({
+      amount: input.amountPaise,
+      currency: input.currency,
+      notes: input.notes,
+    }),
   });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`Razorpay create page failed (${res.status}): ${text}`);
+    throw new Error(`Razorpay create order failed (${res.status}): ${text}`);
   }
-  const json = JSON.parse(text) as { id?: string; short_url?: string };
-  if (!json.id || !json.short_url) {
+  const json = JSON.parse(text) as { id?: string; amount?: number; currency?: string };
+  if (!json.id) {
     throw new Error(`Razorpay returned unexpected payload: ${text}`);
   }
-  return { razorpayPageId: json.id, shortUrl: json.short_url };
-}
-
-export interface UpdatePaymentPageInput {
-  title?: string;
-  description?: string | null;
-  imageUrl?: string | null;
-  amountPaise?: number;
-}
-
-export async function updatePaymentPage(
-  razorpayPageId: string,
-  patch: UpdatePaymentPageInput,
-  mode: "test" | "live",
-): Promise<void> {
-  const creds = razorpayKeysForMode(mode);
-  const body: Record<string, unknown> = {};
-  if (patch.title !== undefined) body.title = patch.title;
-  if (patch.description !== undefined) body.description = patch.description ?? "";
-  if (patch.imageUrl !== undefined) body.image_url = patch.imageUrl ?? "";
-  if (patch.amountPaise !== undefined) body.amount = patch.amountPaise;
-  const res = await fetch(`${BASE}/${razorpayPageId}`, {
-    method: "PATCH",
-    headers: {
-      Authorization: authHeader(creds),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Razorpay update page failed (${res.status}): ${text}`);
-  }
-}
-
-export async function deactivatePaymentPage(
-  razorpayPageId: string,
-  mode: "test" | "live",
-): Promise<void> {
-  const creds = razorpayKeysForMode(mode);
-  const res = await fetch(`${BASE}/${razorpayPageId}/deactivate`, {
-    method: "PATCH",
-    headers: {
-      Authorization: authHeader(creds),
-      "Content-Type": "application/json",
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Razorpay deactivate failed (${res.status}): ${text}`);
-  }
+  return {
+    orderId: json.id,
+    amountPaise: json.amount ?? input.amountPaise,
+    currency: json.currency ?? input.currency,
+    keyId: creds.keyId,
+  };
 }
