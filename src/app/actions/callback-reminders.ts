@@ -36,15 +36,38 @@ export async function getDueCallbacksAction(): Promise<DueCallback[]> {
     .order("next_callback_at", { ascending: false })
     .limit(20);
 
-  return ((data ?? []) as Array<{
+  const due = (data ?? []) as Array<{
     id: string;
     name: string;
     phone: string | null;
     next_callback_at: string;
-  }>).map((l) => ({
-    leadId: l.id,
-    leadName: l.name,
-    leadPhone: l.phone,
-    scheduledAtIso: l.next_callback_at,
-  }));
+  }>;
+  if (due.length === 0) return [];
+
+  // Hide the reminder for any lead that's already been called inside the
+  // reminder window — i.e., the rep has already acted on this callback and
+  // shouldn't keep getting nagged. Any outbound call in the last 30 min
+  // counts as "handled". We look at direction=outbound so an inbound call
+  // from the customer doesn't accidentally silence a reminder the rep
+  // still needs to make.
+  const dueIds = due.map((l) => l.id);
+  const { data: callData } = await sb
+    .from("communications")
+    .select("lead_id")
+    .eq("channel", "call")
+    .eq("direction", "outbound")
+    .in("lead_id", dueIds)
+    .gte("created_at", lowerBound);
+  const handled = new Set(
+    ((callData ?? []) as { lead_id: string }[]).map((c) => c.lead_id),
+  );
+
+  return due
+    .filter((l) => !handled.has(l.id))
+    .map((l) => ({
+      leadId: l.id,
+      leadName: l.name,
+      leadPhone: l.phone,
+      scheduledAtIso: l.next_callback_at,
+    }));
 }

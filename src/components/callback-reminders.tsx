@@ -10,15 +10,52 @@ import {
 import { formatDateTime } from "@/lib/utils";
 
 // Poll every minute for callbacks due for the currently signed-in owner.
-// Persistent bottom-right cards until dismissed or snoozed. Client-side
-// only — nothing here writes to the DB (Dismiss/Snooze are local).
+// Persistent bottom-right cards until dismissed or snoozed. Dismiss/snooze
+// state is persisted in localStorage so a page refresh doesn't resurrect a
+// reminder the user just closed.
 const POLL_MS = 60_000;
 const SNOOZE_MS = 5 * 60_000;
+const DISMISS_MS = 60 * 60_000; // 1 hour
+const HIDDEN_KEY = "crm_callback_hidden_until_v1";
+
+type HiddenMap = Record<string, number>;
+
+function loadHidden(): HiddenMap {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as HiddenMap;
+    // Drop stale entries so localStorage doesn't grow forever.
+    const now = Date.now();
+    const kept: HiddenMap = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "number" && v > now) kept[k] = v;
+    }
+    return kept;
+  } catch {
+    return {};
+  }
+}
+
+function saveHidden(m: HiddenMap) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(HIDDEN_KEY, JSON.stringify(m));
+  } catch {
+    // Storage quota or private mode — silently ignore.
+  }
+}
 
 export function CallbackReminders() {
   const [dueList, setDueList] = useState<DueCallback[]>([]);
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [snoozedUntil, setSnoozedUntil] = useState<Record<string, number>>({});
+  // Single "hidden until" map covers both dismiss (1h) and snooze (5m) so
+  // survival across refresh is one code path, not two.
+  const [hiddenUntil, setHiddenUntil] = useState<HiddenMap>({});
+
+  useEffect(() => {
+    setHiddenUntil(loadHidden());
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -39,12 +76,18 @@ export function CallbackReminders() {
   const visible = useMemo(() => {
     const now = Date.now();
     return dueList.filter((c) => {
-      if (dismissedIds.has(c.leadId)) return false;
-      const snoozedTs = snoozedUntil[c.leadId];
-      if (snoozedTs && now < snoozedTs) return false;
-      return true;
+      const ts = hiddenUntil[c.leadId];
+      return !ts || now >= ts;
     });
-  }, [dueList, dismissedIds, snoozedUntil]);
+  }, [dueList, hiddenUntil]);
+
+  function hideFor(leadId: string, ms: number) {
+    setHiddenUntil((prev) => {
+      const next = { ...prev, [leadId]: Date.now() + ms };
+      saveHidden(next);
+      return next;
+    });
+  }
 
   if (visible.length === 0) return null;
 
@@ -54,19 +97,8 @@ export function CallbackReminders() {
         <ReminderCard
           key={c.leadId}
           reminder={c}
-          onDismiss={() =>
-            setDismissedIds((prev) => {
-              const next = new Set(prev);
-              next.add(c.leadId);
-              return next;
-            })
-          }
-          onSnooze={() =>
-            setSnoozedUntil((prev) => ({
-              ...prev,
-              [c.leadId]: Date.now() + SNOOZE_MS,
-            }))
-          }
+          onDismiss={() => hideFor(c.leadId, DISMISS_MS)}
+          onSnooze={() => hideFor(c.leadId, SNOOZE_MS)}
         />
       ))}
     </div>
@@ -113,7 +145,7 @@ function ReminderCard({
           type="button"
           onClick={onDismiss}
           className="p-1 rounded hover:bg-brand-bg text-brand-dark-text hover:text-red-500"
-          title="Dismiss (won't show again this session)"
+          title="Dismiss for 1 hour"
           aria-label="Dismiss"
         >
           <X size={14} />
