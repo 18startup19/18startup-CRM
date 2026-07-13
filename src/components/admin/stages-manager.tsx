@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { Badge, Card, FieldError, FieldLabel, Input, Select } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   archiveStageAction,
   createStageAction,
   restoreStageAction,
+  setStageVisibilityAction,
   updateStageAction,
   type StageResult,
 } from "@/app/actions/stages";
@@ -202,6 +203,7 @@ function StageRow({ stage }: { stage: LeadStageRow }) {
       >
         {stage.kind}
       </Badge>
+      <VisibilityToggle stage={stage} />
       <button
         type="button"
         onClick={() => setEditing(true)}
@@ -218,5 +220,37 @@ function StageRow({ stage }: { stage: LeadStageRow }) {
         </button>
       </form>
     </li>
+  );
+}
+
+// Checkbox that gates whether team members see this stage. Admins +
+// managers always see all stages, so the label is scoped to "team".
+function VisibilityToggle({ stage }: { stage: LeadStageRow }) {
+  // Optimistic local state so the checkbox reflects instantly; the server
+  // action + revalidatePath brings the source of truth back on refresh.
+  const [checked, setChecked] = useState(stage.visible_to_members);
+  const [pending, startTransition] = useTransition();
+
+  function onChange(next: boolean) {
+    setChecked(next);
+    startTransition(async () => {
+      await setStageVisibilityAction(stage.id, next);
+    });
+  }
+
+  return (
+    <label
+      className="flex items-center gap-1.5 text-[12px] text-brand-dark-text cursor-pointer select-none"
+      title="When ticked, team members + managers can see this stage. Only admins always see every stage."
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={pending}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 accent-brand-orange"
+      />
+      Visible to team
+    </label>
   );
 }

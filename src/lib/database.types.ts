@@ -244,6 +244,7 @@ export interface LeadStageRow {
   kind: StageKind;
   position: number;
   is_archived: boolean;
+  visible_to_members: boolean;
   pipeline_id: string;
   created_at: string;
 }

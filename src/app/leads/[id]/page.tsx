@@ -124,12 +124,23 @@ export default async function LeadDetailPage({ params }: Params) {
     session.role === "admin" || permissions["leads:view_all"] === true;
   if (!canSeeAll && lead.owner_id !== session.userId) notFound();
 
+  // Only admin sees every stage. Managers + members are limited to
+  // stages ticked "Visible to team". The current lead's stage stays in
+  // the list even if it's hidden, so the dropdown can still render the
+  // current selection instead of breaking.
+  let visibleStages = (stagesRes.data ?? []) as LeadStageRow[];
+  if (session.role !== "admin") {
+    visibleStages = visibleStages.filter(
+      (s) => s.visible_to_members || s.id === lead.stage_id,
+    );
+  }
+
   return (
     <LeadCockpit
       session={session}
       permissions={permissions}
       lead={lead}
-      stages={(stagesRes.data ?? []) as LeadStageRow[]}
+      stages={visibleStages}
       fields={(fieldsRes.data ?? []) as CustomFieldRow[]}
       users={(usersRes.data ?? []) as Pick<UserRow, "id" | "name" | "email">[]}
       notes={(notesRes.data ?? []) as LeadNoteRow[]}

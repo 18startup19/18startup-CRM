@@ -14,12 +14,18 @@ export default async function NewLeadPage() {
     sb.from("users").select("id,name,email").eq("is_active", true),
     getTagSuggestions(),
   ]);
+  // Only admin sees every stage. Managers + members are limited to
+  // stages ticked "Visible to team".
+  let stages = (s.data ?? []) as LeadStageRow[];
+  if (session.role !== "admin") {
+    stages = stages.filter((st) => st.visible_to_members);
+  }
   return (
     <>
       <PageHeader title="New lead" subtitle="Add a lead manually." />
       <div className="p-8 max-w-[720px]">
         <LeadForm
-          stages={(s.data ?? []) as LeadStageRow[]}
+          stages={stages}
           fields={(f.data ?? []) as CustomFieldRow[]}
           users={(u.data ?? []) as Pick<UserRow, "id" | "name" | "email">[]}
           currentUserId={session.userId}

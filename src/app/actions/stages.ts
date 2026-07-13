@@ -93,3 +93,20 @@ export async function updateStageAction(id: string, form: FormData): Promise<voi
   revalidatePath("/admin/stages");
   revalidatePath("/leads/kanban");
 }
+
+// Toggle whether members + managers see this stage. Only admins always
+// see every stage; when a stage is hidden here, the Kanban column, stage
+// dropdown, and lead-visibility for non-admin users all filter it out.
+export async function setStageVisibilityAction(
+  id: string,
+  visible: boolean,
+): Promise<void> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  await sb
+    .from("lead_stages")
+    .update({ visible_to_members: visible })
+    .eq("id", id);
+  revalidatePath("/admin/stages");
+  revalidatePath("/leads/kanban");
+}

@@ -95,7 +95,12 @@ export default async function KanbanPage({ searchParams }: PageProps) {
     pipelines = pipelines.filter((p) => allowedPipelineIds.includes(p.id));
   }
 
-  const allStages = (stagesData ?? []) as LeadStageRow[];
+  let allStages = (stagesData ?? []) as LeadStageRow[];
+  // Only admin sees every stage. Managers + members are both limited to
+  // stages ticked "Visible to team" in Admin → Lead stages.
+  if (session.role !== "admin") {
+    allStages = allStages.filter((s) => s.visible_to_members);
+  }
   const customFields = (customFieldsData ?? []) as CustomFieldRow[];
   const users = (usersData ?? []) as Pick<UserRow, "id" | "name">[];
   const ownerNamesById = Object.fromEntries(users.map((u) => [u.id, u.name]));
