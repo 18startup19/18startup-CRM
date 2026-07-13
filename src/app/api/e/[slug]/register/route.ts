@@ -2,10 +2,52 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { intakeLead } from "@/lib/intake";
 import { createOrder } from "@/lib/razorpay-pages";
+import { addMeetingRegistrant } from "@/lib/integrations/zoom";
 import type {
   EventExtraField,
   EventRow,
 } from "@/lib/database.types";
+
+// Add the just-registered person to the event's Zoom meeting and stamp
+// the personal join URL onto their event_registrations row. Silent-fail:
+// registration in CRM stands even if Zoom hiccups — we log the error on
+// the row so the admin can retry from the check-in page later.
+async function registerOnZoomIfConfigured(args: {
+  event: EventRow;
+  registrationId: string;
+  name: string;
+  email: string;
+  phone: string;
+}): Promise<{ joinUrl: string | null; error: string | null }> {
+  const { event, registrationId, name, email, phone } = args;
+  if (!event.zoom_meeting_id) return { joinUrl: null, error: null };
+  const sb = supabaseAdmin();
+  const [firstName, ...rest] = name.split(/\s+/);
+  const lastName = rest.join(" ").trim();
+  const result = await addMeetingRegistrant({
+    meetingId: event.zoom_meeting_id,
+    firstName: firstName || name,
+    lastName: lastName || undefined,
+    email,
+    phone,
+  });
+  if (result.ok) {
+    await sb
+      .from("event_registrations")
+      .update({
+        zoom_registrant_id: result.registrantId,
+        zoom_join_url: result.joinUrl,
+        zoom_registration_error: null,
+      })
+      .eq("id", registrationId);
+    return { joinUrl: result.joinUrl, error: null };
+  }
+  await sb
+    .from("event_registrations")
+    .update({ zoom_registration_error: result.error })
+    .eq("id", registrationId);
+  return { joinUrl: null, error: result.error };
+}
 
 // Public registration endpoint. Called from the /e/[slug] landing page's
 // form. Two branches:
@@ -133,10 +175,19 @@ export async function POST(
     if (regErr) {
       return Response.json({ ok: false, error: regErr.message }, { status: 500 });
     }
+    const zoom = await registerOnZoomIfConfigured({
+      event,
+      registrationId: reg.id,
+      name,
+      email,
+      phone,
+    });
     return Response.json({
       ok: true,
       free: true,
       registrationId: reg.id,
+      zoomJoinUrl: zoom.joinUrl,
+      zoomWarning: zoom.error,
     });
   }
 
@@ -176,6 +227,11 @@ export async function POST(
       .from("event_registrations")
       .update({ razorpay_order_id: order.orderId })
       .eq("id", reg.id);
+    // Paid events: we DON'T call Zoom yet — hold off until payment
+    // captures. The Razorpay webhook path can do the Zoom registration
+    // once paid_at is set (a follow-up we can wire when needed). For now
+    // return without a join URL; admin manually shares it after payment
+    // if needed.
     return Response.json({
       ok: true,
       free: false,

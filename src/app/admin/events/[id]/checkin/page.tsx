@@ -74,6 +74,7 @@ export default async function EventCheckinPage({
           checkinUrl={checkinUrl}
           qrDataUrl={qrDataUrl}
           registrations={regs}
+          hasZoomMeeting={!!eventData.zoom_meeting_id}
         />
       </div>
     </>

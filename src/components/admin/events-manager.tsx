@@ -359,6 +359,19 @@ function EventForm({
 
         <div className="border-t border-brand-border pt-4">
           <div className="text-[11px] font-bold uppercase tracking-[1px] text-brand-orange mb-3">
+            Zoom (optional)
+          </div>
+          <Field
+            label="Zoom Meeting ID"
+            name="zoom_meeting_id"
+            defaultValue={event?.zoom_meeting_id ?? ""}
+            placeholder="e.g. 8123456789"
+            hint="Paste the numeric ID from your scheduled Zoom meeting. When set, every registrant gets a personal join URL auto-generated via the Zoom API."
+          />
+        </div>
+
+        <div className="border-t border-brand-border pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-[1px] text-brand-orange mb-3">
             Payment
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

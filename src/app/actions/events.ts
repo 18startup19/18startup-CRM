@@ -113,6 +113,14 @@ function readFields(fd: FormData) {
     tags: parseTags(fd.get("tags")),
     is_published: String(fd.get("is_published") ?? "") === "true",
     raw_slug: String(fd.get("slug") ?? "").trim(),
+    zoom_meeting_id: (() => {
+      // Admins paste the meeting ID from Zoom. We strip spaces and any
+      // "https://zoom.us/j/…" nonsense they might paste by accident.
+      const raw = String(fd.get("zoom_meeting_id") ?? "").trim();
+      if (!raw) return null;
+      const match = raw.match(/(\d{9,12})/);
+      return match ? match[1] : raw.replace(/\s+/g, "");
+    })(),
   };
 }
 
@@ -162,6 +170,7 @@ export async function createEventAction(
       owner_id: v.owner_id,
       tags: v.tags,
       is_published: v.is_published,
+      zoom_meeting_id: v.zoom_meeting_id,
     })
     .select("*")
     .single<EventRow>();
@@ -221,6 +230,7 @@ export async function updateEventAction(
       owner_id: v.owner_id,
       tags: v.tags,
       is_published: v.is_published,
+      zoom_meeting_id: v.zoom_meeting_id,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -300,4 +310,114 @@ export async function manualCheckinAction(
 
   revalidatePath("/admin/events/" + reg.event_id);
   return { ok: true, id: reg.id };
+}
+
+// Pull the Zoom attendance report for an event's meeting and mark matched
+// registrations attended. Match is by Zoom's registrant_id (100%
+// accurate — it's the same ID we saved when we added the registrant via
+// API), NOT by email or name — so a person who signed into Zoom with a
+// different Google account still matches correctly.
+export interface ZoomSyncResult {
+  ok: boolean;
+  error?: string;
+  matched?: number;
+  alreadyMarked?: number;
+  unmatched?: number;
+  unmatchedNames?: string[];
+}
+
+export async function syncZoomAttendanceAction(
+  eventId: string,
+): Promise<ZoomSyncResult> {
+  await requireAdmin();
+  const sb = supabaseAdmin();
+  const { data: event } = await sb
+    .from("events")
+    .select("id,zoom_meeting_id,attended_stage_id")
+    .eq("id", eventId)
+    .maybeSingle<
+      Pick<EventRow, "id" | "zoom_meeting_id" | "attended_stage_id">
+    >();
+  if (!event) return { ok: false, error: "Event not found." };
+  if (!event.zoom_meeting_id) {
+    return {
+      ok: false,
+      error: "No Zoom meeting ID set on this event. Add it and try again.",
+    };
+  }
+
+  const { getMeetingParticipants } = await import("@/lib/integrations/zoom");
+  const report = await getMeetingParticipants(event.zoom_meeting_id);
+  if (!report.ok) return { ok: false, error: report.error };
+
+  // Fetch this event's registrations that already have a Zoom registrant_id.
+  const { data: regsData } = await sb
+    .from("event_registrations")
+    .select("id,lead_id,attended_at,zoom_registrant_id")
+    .eq("event_id", eventId)
+    .not("zoom_registrant_id", "is", null);
+  const regs = (regsData ?? []) as {
+    id: string;
+    lead_id: string;
+    attended_at: string | null;
+    zoom_registrant_id: string;
+  }[];
+  const byRegistrant = new Map(regs.map((r) => [r.zoom_registrant_id, r]));
+
+  let matched = 0;
+  let alreadyMarked = 0;
+  const unmatchedNames: string[] = [];
+
+  for (const p of report.participants) {
+    if (!p.registrantId) {
+      // Person joined without going through registration (e.g. host,
+      // co-host, guest link). Nothing to match against — record their
+      // name for the admin to review.
+      unmatchedNames.push(p.name || p.email || "unknown");
+      continue;
+    }
+    const reg = byRegistrant.get(p.registrantId);
+    if (!reg) {
+      unmatchedNames.push(p.name || p.email || "unknown");
+      continue;
+    }
+    if (reg.attended_at) {
+      alreadyMarked++;
+      continue;
+    }
+    await sb
+      .from("event_registrations")
+      .update({
+        attended_at: p.joinTime || new Date().toISOString(),
+        checkin_source: "zoom_sync",
+      })
+      .eq("id", reg.id);
+    if (event.attended_stage_id) {
+      await sb
+        .from("leads")
+        .update({ stage_id: event.attended_stage_id })
+        .eq("id", reg.lead_id);
+      await sb.from("lead_activities").insert({
+        lead_id: reg.lead_id,
+        actor_id: null,
+        kind: "stage_changed",
+        payload: {
+          to: event.attended_stage_id,
+          source: "event_zoom_sync",
+          event_id: eventId,
+          duration_seconds: p.durationSeconds,
+        },
+      });
+    }
+    matched++;
+  }
+
+  revalidatePath("/admin/events/" + eventId);
+  return {
+    ok: true,
+    matched,
+    alreadyMarked,
+    unmatched: unmatchedNames.length,
+    unmatchedNames: unmatchedNames.slice(0, 30),
+  };
 }

@@ -19,6 +19,7 @@ export function EventLandingPage({ event, registeredCount }: Props) {
     "idle" | "submitting" | "paying" | "success" | "error"
   >("idle");
   const [error, setError] = useState<string | null>(null);
+  const [zoomJoinUrl, setZoomJoinUrl] = useState<string | null>(null);
   const scriptLoaded = useRef(false);
 
   useEffect(() => {
@@ -77,6 +78,7 @@ export function EventLandingPage({ event, registeredCount }: Props) {
     let data: {
       free?: boolean;
       registrationId?: string;
+      zoomJoinUrl?: string | null;
       order?: {
         orderId: string;
         keyId: string;
@@ -102,6 +104,7 @@ export function EventLandingPage({ event, registeredCount }: Props) {
     }
 
     if (data.free) {
+      if (data.zoomJoinUrl) setZoomJoinUrl(data.zoomJoinUrl);
       setStatus("success");
       return;
     }
@@ -158,14 +161,35 @@ export function EventLandingPage({ event, registeredCount }: Props) {
             )}
             .
           </p>
-          <div className="bg-brand-bg rounded-[10px] p-4 text-left text-[13px] text-brand-dark-text">
-            <div className="font-bold text-brand-charcoal mb-1">
-              How check-in works
+          {zoomJoinUrl ? (
+            <>
+              <a
+                href={zoomJoinUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block w-full bg-brand-orange text-white text-[15px] font-bold py-3 rounded-[12px] hover:bg-brand-orange-dark transition-colors"
+              >
+                Join workshop on Zoom →
+              </a>
+              <div className="mt-4 bg-brand-bg rounded-[10px] p-4 text-left text-[12.5px] text-brand-dark-text">
+                <div className="font-bold text-brand-charcoal mb-1">
+                  This link is personal to you
+                </div>
+                Please don&apos;t share it. If the meeting hasn&apos;t started
+                yet, the link will show a &quot;waiting for host&quot; screen
+                until it opens.
+              </div>
+            </>
+          ) : (
+            <div className="bg-brand-bg rounded-[10px] p-4 text-left text-[13px] text-brand-dark-text">
+              <div className="font-bold text-brand-charcoal mb-1">
+                What&apos;s next
+              </div>
+              You&apos;ll get a WhatsApp + email with the workshop details
+              shortly. If the venue is a physical location, an organiser will
+              check you in with a QR code on the day.
             </div>
-            An organiser will walk around with a QR code at the venue. Scan it,
-            enter this same phone number ({phone}), and you&apos;re marked
-            attended.
-          </div>
+          )}
         </div>
       </div>
     );

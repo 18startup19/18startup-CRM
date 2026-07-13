@@ -2,10 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, RefreshCw, Search } from "lucide-react";
+import { Copy, RefreshCw, Search, Video } from "lucide-react";
 import {
   manualCheckinAction,
   rotateCheckinTokenAction,
+  syncZoomAttendanceAction,
+  type ZoomSyncResult,
 } from "@/app/actions/events";
 import { Card } from "@/components/ui/card";
 import { formatDateTime } from "@/lib/utils";
@@ -24,6 +26,7 @@ interface Props {
   checkinUrl: string;
   qrDataUrl: string;
   registrations: Registration[];
+  hasZoomMeeting: boolean;
 }
 
 export function EventCheckinView({
@@ -32,11 +35,23 @@ export function EventCheckinView({
   checkinUrl,
   qrDataUrl,
   registrations,
+  hasZoomMeeting,
 }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [rotatePending, startRotate] = useTransition();
+  const [zoomPending, startZoom] = useTransition();
+  const [zoomResult, setZoomResult] = useState<ZoomSyncResult | null>(null);
+
+  function onSyncZoom() {
+    setZoomResult(null);
+    startZoom(async () => {
+      const res = await syncZoomAttendanceAction(eventId);
+      setZoomResult(res);
+      if (res.ok) router.refresh();
+    });
+  }
 
   const attendedCount = registrations.filter((r) => r.attended_at).length;
   const pendingCount = registrations.length - attendedCount;
@@ -131,20 +146,58 @@ export function EventCheckinView({
               <strong>{registrations.length}</strong> registered
             </div>
           </div>
-          <div className="relative min-w-[240px]">
-            <Search
-              size={13}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-dark-text"
-            />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name / phone / email"
-              className="w-full pl-9 pr-3 h-[36px] rounded-[10px] border border-brand-border bg-brand-bg text-[13px] outline-none focus:bg-white focus:border-brand-orange"
-            />
+          <div className="flex items-center gap-2 flex-wrap">
+            {hasZoomMeeting && (
+              <button
+                type="button"
+                onClick={onSyncZoom}
+                disabled={zoomPending}
+                className="inline-flex items-center gap-1.5 h-[36px] px-3 rounded-[10px] border border-brand-orange bg-brand-orange text-white text-[12.5px] font-bold hover:bg-brand-orange-dark disabled:opacity-60"
+                title="Fetch the Zoom participant report and mark matched registrants attended."
+              >
+                <Video size={13} />
+                {zoomPending ? "Syncing…" : "Sync Zoom attendance"}
+              </button>
+            )}
+            <div className="relative min-w-[240px]">
+              <Search
+                size={13}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-dark-text"
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name / phone / email"
+                className="w-full pl-9 pr-3 h-[36px] rounded-[10px] border border-brand-border bg-brand-bg text-[13px] outline-none focus:bg-white focus:border-brand-orange"
+              />
+            </div>
           </div>
         </div>
+
+        {zoomResult && (
+          <div
+            className={`mb-3 rounded-[10px] px-3 py-2 text-[13px] ${zoomResult.ok ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-700"}`}
+          >
+            {zoomResult.ok ? (
+              <>
+                <strong>{zoomResult.matched ?? 0}</strong> newly marked
+                attended, <strong>{zoomResult.alreadyMarked ?? 0}</strong>{" "}
+                already marked,{" "}
+                <strong>{zoomResult.unmatched ?? 0}</strong> in the Zoom
+                report couldn&apos;t be matched (hosts, co-hosts, or people
+                who joined via a guest link).
+                {zoomResult.unmatchedNames && zoomResult.unmatchedNames.length > 0 && (
+                  <div className="mt-1 text-[12px] text-green-900/80">
+                    Unmatched: {zoomResult.unmatchedNames.join(", ")}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>Sync failed: {zoomResult.error}</>
+            )}
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full">

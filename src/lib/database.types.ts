@@ -107,6 +107,7 @@ export interface EventRow {
   owner_id: string | null;
   tags: string[];
   is_published: boolean;
+  zoom_meeting_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -117,12 +118,20 @@ export interface EventRegistrationRow {
   lead_id: string;
   registered_at: string;
   attended_at: string | null;
-  checkin_source: "self_scan" | "organizer_marked" | "walkin" | null;
+  checkin_source:
+    | "self_scan"
+    | "organizer_marked"
+    | "walkin"
+    | "zoom_sync"
+    | null;
   custom_answers: Record<string, string>;
   razorpay_order_id: string | null;
   razorpay_payment_id: string | null;
   amount_paise: number | null;
   paid_at: string | null;
+  zoom_registrant_id: string | null;
+  zoom_join_url: string | null;
+  zoom_registration_error: string | null;
 }
 
 export interface PaymentPageRow {
