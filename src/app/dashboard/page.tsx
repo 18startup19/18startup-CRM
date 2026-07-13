@@ -203,12 +203,16 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             label="Amount generated"
             value={`₹${amountToday.toLocaleString("en-IN")}`}
           />
-          <StatCard
-            icon={<Sparkles size={14} />}
-            label="Incentive earned"
-            value={`₹${Math.round(incentiveToday).toLocaleString("en-IN")}`}
-            hint={`This month: ₹${Math.round(incentiveMonth).toLocaleString("en-IN")}`}
-          />
+          {/* Incentives shown only to admin + manager. Members see the
+              other KPIs but not their own earnings. */}
+          {(session.role === "admin" || session.role === "manager") && (
+            <StatCard
+              icon={<Sparkles size={14} />}
+              label="Incentive earned"
+              value={`₹${Math.round(incentiveToday).toLocaleString("en-IN")}`}
+              hint={`This month: ₹${Math.round(incentiveMonth).toLocaleString("en-IN")}`}
+            />
+          )}
           <StatCard
             icon={<Trophy size={14} />}
             label="Leads closed (won)"

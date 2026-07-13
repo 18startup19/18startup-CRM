@@ -292,7 +292,9 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div
+          className={`grid grid-cols-1 gap-4 ${scopeAllUsers ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
+        >
           <StatCard
             icon={<IndianRupee size={14} />}
             label="Amount collected"
@@ -303,11 +305,15 @@ export default async function ConvertedLeadsPage({ searchParams }: PageProps) {
             label="Leads converted"
             value={String(uniqueLeads.size)}
           />
-          <StatCard
-            icon={<Sparkles size={14} />}
-            label="Incentive earned"
-            value={`₹${Math.round(totalIncentive).toLocaleString("en-IN")}`}
-          />
+          {/* Incentive tile shown only to admin + manager. Members see
+              amount + leads count but not the incentive figure. */}
+          {scopeAllUsers && (
+            <StatCard
+              icon={<Sparkles size={14} />}
+              label="Incentive earned"
+              value={`₹${Math.round(totalIncentive).toLocaleString("en-IN")}`}
+            />
+          )}
         </div>
 
         {scopeAllUsers && (
