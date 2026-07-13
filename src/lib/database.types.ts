@@ -73,6 +73,58 @@ export interface CohortRow {
   updated_at: string;
 }
 
+export interface EventExtraField {
+  key: string;
+  label: string;
+  type: "text" | "longtext" | "dropdown";
+  options?: string[];
+  required?: boolean;
+}
+
+export interface EventRow {
+  id: string;
+  slug: string;
+  internal_label: string;
+  title: string;
+  description: string | null;
+  image_url: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  timezone: string;
+  location_text: string | null;
+  location_map_url: string | null;
+  terms_and_conditions: string | null;
+  guidelines: string | null;
+  capacity: number | null;
+  amount_paise: number;
+  currency: string;
+  mode: "test" | "live";
+  checkin_token: string;
+  extra_fields: EventExtraField[];
+  registered_stage_id: string | null;
+  attended_stage_id: string | null;
+  pipeline_id: string | null;
+  owner_id: string | null;
+  tags: string[];
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventRegistrationRow {
+  id: string;
+  event_id: string;
+  lead_id: string;
+  registered_at: string;
+  attended_at: string | null;
+  checkin_source: "self_scan" | "organizer_marked" | "walkin" | null;
+  custom_answers: Record<string, string>;
+  razorpay_order_id: string | null;
+  razorpay_payment_id: string | null;
+  amount_paise: number | null;
+  paid_at: string | null;
+}
+
 export interface PaymentPageRow {
   id: string;
   slug: string | null;

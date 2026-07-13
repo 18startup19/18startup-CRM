@@ -25,6 +25,7 @@ import {
   X,
   Route,
   BookUser,
+  Calendar,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { logoutAction } from "@/app/actions/auth";
@@ -63,6 +64,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/message-templates", label: "Templates", icon: MailIcon },
   { href: "/admin/cohorts", label: "Cohort Onboarding", icon: IndianRupee },
   { href: "/admin/leads-inflow", label: "Leads Inflow", icon: Route },
+  { href: "/admin/events", label: "Events", icon: Calendar },
   { href: "/admin/integrations", label: "Integrations", icon: Settings },
 ];
 

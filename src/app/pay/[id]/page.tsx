@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { PayPage } from "@/components/public/pay-page";
 import type { PaymentPageRow } from "@/lib/database.types";
+
+// Override the CRM's default "18startup CRM" tab title with just the brand
+// on the buyer-facing pay page — buyers should never see the internal CRM
+// label. Keeps the rest of the app's tab title unchanged.
+export const metadata: Metadata = {
+  title: "18startup",
+};
 
 // Public buyer-facing page. No auth. The URL you paste into Webflow buttons
 // points here. The `id` is the payment_pages row UUID.

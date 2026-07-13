@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import "@/lib/razorpay-checkout-types";
 
 interface Props {
   pageId: string;
@@ -11,35 +12,6 @@ interface Props {
   currency: string;
   thankYouUrl: string | null;
   thankYouButtonLabel: string | null;
-}
-
-interface RazorpayCheckoutOptions {
-  key: string;
-  amount: number;
-  currency: string;
-  order_id: string;
-  name: string;
-  description?: string;
-  image?: string;
-  prefill?: { name?: string; email?: string; contact?: string };
-  notes?: Record<string, string>;
-  theme?: { color?: string };
-  handler?: (response: unknown) => void;
-  modal?: { ondismiss?: () => void };
-}
-
-interface RazorpayInstance {
-  open: () => void;
-}
-
-interface RazorpayGlobal {
-  new (options: RazorpayCheckoutOptions): RazorpayInstance;
-}
-
-declare global {
-  interface Window {
-    Razorpay?: RazorpayGlobal;
-  }
 }
 
 export function PayPage({
@@ -192,9 +164,11 @@ export function PayPage({
           />
         )}
         <div className="p-6">
-          <h1 className="text-[22px] font-bold text-brand-charcoal">{title}</h1>
+          <h1 className="text-[22px] font-bold text-brand-charcoal break-words">
+            {title}
+          </h1>
           {description && (
-            <p className="text-[14px] text-brand-dark-text mt-2 whitespace-pre-wrap">
+            <p className="text-[14px] text-brand-dark-text mt-2 whitespace-pre-wrap break-words">
               {description}
             </p>
           )}

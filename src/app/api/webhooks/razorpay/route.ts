@@ -98,6 +98,28 @@ export async function POST(req: NextRequest) {
 
   const sb = supabaseAdmin();
 
+  // Events path: paid-event registrations stamp event_registration_id on
+  // the order. Mark the registration paid; lead + routing were already set
+  // up when the buyer hit /api/e/[slug]/register.
+  const eventRegistrationId =
+    typeof mergedNotes.event_registration_id === "string"
+      ? (mergedNotes.event_registration_id as string)
+      : null;
+  if (eventRegistrationId) {
+    await sb
+      .from("event_registrations")
+      .update({
+        razorpay_payment_id: payment.id ?? null,
+        paid_at: new Date().toISOString(),
+      })
+      .eq("id", eventRegistrationId);
+    return Response.json({
+      ok: true,
+      action: "event_registration_paid",
+      event_registration_id: eventRegistrationId,
+    });
+  }
+
   // Payment Pages path: if the order/payment carries a payment_page_crm_id
   // in notes (stamped when the buyer's browser called /api/pay/[id]/create-
   // order), we skip routing rules and use the page's own configuration —

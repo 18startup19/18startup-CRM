@@ -26,10 +26,14 @@ export function middleware(req: NextRequest) {
 
   const path = req.nextUrl.pathname;
 
-  // Case 1: already targeting the buyer-facing route / API. Pass through.
+  // Case 1: already targeting a buyer-facing route / API. Pass through.
+  // /pay/* → payment pages, /e/* → event landing + checkin, plus the
+  // matching /api/* endpoints.
   if (
     path.startsWith("/pay/") ||
     path.startsWith("/api/pay/") ||
+    path.startsWith("/e/") ||
+    path.startsWith("/api/e/") ||
     path.startsWith("/_next/") ||
     path === "/favicon.ico"
   ) {
